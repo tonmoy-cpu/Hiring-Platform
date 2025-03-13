@@ -1,39 +1,37 @@
-import Navbar from "@/components/navbar"
-import { CircleUser, FileText, MoreHorizontal } from "lucide-react"
+import Navbar from "@/components/navbar";
+import { CircleUser, FileText } from "lucide-react";
 
 export default function TrackApplications() {
+  const applications = [
+    { id: 1, company: "COMPANY-1", details: "Software Engineer", status: "Applied", feedback: "Add 'TypeScript' to skills." },
+    { id: 2, company: "COMPANY-2", details: "Product Manager", status: "Under Review", feedback: "Highlight Agile experience." },
+  ];
+
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
-      <main className="flex-1 p-4">
-        <div className="bg-[#313131] p-6 rounded-md mb-8">
-          <h1 className="text-2xl font-bold text-center uppercase">TRACK APPLICATIONS</h1>
+      <main className="flex-1 p-6">
+        <div className="bg-[#313131] p-6 rounded-lg mb-8 shadow-md">
+          <h1 className="text-3xl font-bold text-center uppercase text-white">Track Applications</h1>
         </div>
 
-        <div className="space-y-4">
-          {[1, 2, 3, 4].map((item) => (
-            <div key={item} className="bg-[#d9d9d9] p-3 rounded-md flex items-center">
-              <div className="mr-3">
-                <CircleUser className="h-10 w-10 text-[#313131]" />
-              </div>
+        <div className="space-y-6">
+          {applications.map((app) => (
+            <div key={app.id} className="bg-[#d9d9d9] p-4 rounded-lg flex items-center shadow-md">
+              <CircleUser className="h-10 w-10 text-[#313131] mr-4" />
               <div className="flex-1 text-[#313131]">
-                <p className="font-bold">COMPANY NAME</p>
-                <p className="text-xs">all the details of the job</p>
+                <p className="font-bold text-lg">{app.company}</p>
+                <p className="text-sm">{app.details}</p>
+                <p className="text-xs mt-1">Status: {app.status}</p>
+                <p className="text-xs text-gray-600 mt-1">Feedback: {app.feedback}</p>
               </div>
-              <div className="flex items-center space-x-2">
-                <button className="p-1 rounded-full bg-[#313131]">
-                  <FileText className="h-4 w-4 text-white" />
-                </button>
-                <button className="p-1 rounded-full bg-[#313131]">
-                  <MoreHorizontal className="h-4 w-4 text-white" />
-                </button>
-                <button className="bg-[#313131] text-white text-xs px-3 py-1 rounded">APPLIED</button>
-              </div>
+              <button className="p-2 rounded-full bg-[#313131] hover:bg-[#4a4a4a] transition">
+                <FileText className="h-5 w-5 text-white" />
+              </button>
             </div>
           ))}
         </div>
       </main>
     </div>
-  )
+  );
 }
-

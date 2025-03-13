@@ -1,52 +1,75 @@
-import Navbar from "@/components/navbar"
-import Link from "next/link"
+"use client";
+
+import Navbar from "@/components/navbar";
+import Link from "next/link";
+import { useState } from "react";
 
 export default function Dashboard() {
+  const [appliedJobs, setAppliedJobs] = useState<number[]>([]);
+
+  const handleApply = (companyId: number) => {
+    setAppliedJobs((prev) => [...prev, companyId]);
+    // TODO: Replace with API call: POST /api/jobs/apply
+    alert(`Applied to COMPANY-${companyId}`);
+  };
+
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col bg-[#373737]">
       <Navbar />
-      <main className="flex-1 p-4">
-        <div className="bg-[#313131] p-6 rounded-md mb-8">
-          <h1 className="text-2xl font-bold text-center uppercase">GET YOUR JOB IN ONE TAP</h1>
+      <main className="flex-1 p-6">
+        <div className="bg-[#313131] p-6 rounded-lg mb-8 shadow-md">
+          <h1 className="text-3xl font-semibold text-center uppercase text-white tracking-wide">
+            Get Your Job in One Tap
+          </h1>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {[1, 2, 3].map((company) => (
-            <div key={company} className="job-card p-4 rounded-md">
-              <div className="mb-4">
-                <h3 className="font-bold">COMPANY-{company}</h3>
-              </div>
-              <div className="text-xs">
-                <p>ALL DETAILS</p>
-                <p>ABOUT</p>
-                <p>THE COMPANY</p>
+            <div
+              key={company}
+              className="job-card p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300"
+            >
+              <h3 className="font-semibold text-lg mb-2">COMPANY-{company}</h3>
+              <div className="text-sm text-gray-800">
+                <p>All Details</p>
+                <p>About</p>
+                <p>The Company</p>
               </div>
               <div className="mt-4 flex justify-end">
-                <button className="bg-[#313131] text-white text-xs px-3 py-1 rounded">APPLY</button>
+                <button
+                  onClick={() => handleApply(company)}
+                  disabled={appliedJobs.includes(company)}
+                  className={`text-sm px-4 py-2 rounded-lg transition duration-200 ${
+                    appliedJobs.includes(company)
+                      ? "bg-gray-400 text-white cursor-not-allowed"
+                      : "bg-[#313131] text-white hover:bg-[#4a4a4a]"
+                  }`}
+                >
+                  {appliedJobs.includes(company) ? "Applied" : "Apply"}
+                </button>
               </div>
             </div>
           ))}
         </div>
 
-        <div className="mt-8 flex justify-around">
+        <div className="mt-8 flex flex-wrap justify-around gap-4">
           <Link href="/resume-extraction">
-            <div className="bg-[#313131] p-2 rounded-md text-center">
-              <span className="text-white">RESUME EXTRACTION</span>
-            </div>
+            <button className="bg-[#313131] text-white p-3 rounded-lg hover:bg-[#4a4a4a] transition duration-200 shadow-md w-48">
+              Resume Extraction
+            </button>
           </Link>
           <Link href="/track-applications">
-            <div className="bg-[#313131] p-2 rounded-md text-center">
-              <span className="text-white">TRACK APPLICATIONS</span>
-            </div>
+            <button className="bg-[#313131] text-white p-3 rounded-lg hover:bg-[#4a4a4a] transition duration-200 shadow-md w-48">
+              Track Applications
+            </button>
           </Link>
           <Link href="/analytics">
-            <div className="bg-[#313131] p-2 rounded-md text-center">
-              <span className="text-white">AI ANALYTICS</span>
-            </div>
+            <button className="bg-[#313131] text-white p-3 rounded-lg hover:bg-[#4a4a4a] transition duration-200 shadow-md w-48">
+              AI Analytics
+            </button>
           </Link>
         </div>
       </main>
     </div>
-  )
+  );
 }
-

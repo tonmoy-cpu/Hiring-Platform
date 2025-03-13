@@ -1,56 +1,138 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { useState } from "react"
-import Sidebar from "./sidebar"
+import Link from "next/link";
+import { Menu } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 
-type NavbarProps = {
-  userType?: "recruiter" | "candidate"
-}
+export default function Navbar({ userType = "candidate" }) {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [profilePic, setProfilePic] = useState("/default.jpg");
+  const router = useRouter();
 
-export default function Navbar({ userType = "candidate" }: NavbarProps) {
-  const [showSidebar, setShowSidebar] = useState(false)
-  const [showDropdown, setShowDropdown] = useState(false)
+  useEffect(() => {
+    const fetchProfile = async () => {
+      const token = localStorage.getItem("token");
+      if (token) {
+        const res = await fetch("http://localhost:5000/api/auth/profile", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        setProfilePic(data.profilePic || "/default.jpg");
+      }
+    };
+    fetchProfile();
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    router.push("/");
+    setIsMenuOpen(false);
+    setIsProfileOpen(false);
+  };
+
+  // Dynamic menu options based on userType
+  const menuOptions = userType === "recruiter"
+    ? [
+        { label: "Dashboard", href: "/recruiter/dashboard" },
+        { label: "Post Job", href: "/recruiter/post-job" },
+        { label: "Track Applicants", href: "/recruiter/track-applicants" },
+        { label: "Contact", href: "/contact" },
+        { label: "About", href: "/about" },
+      ]
+    : [
+        { label: "Dashboard", href: "/dashboard" },
+        { label: "Resume Extraction", href: "/resume-extraction" },
+        { label: "Track Applications", href: "/track-applications" },
+        { label: "Contact", href: "/contact" },
+        { label: "About", href: "/about" },
+      ];
 
   return (
-    <>
-      <header className="bg-[#313131] p-4 flex justify-between items-center">
-        <div className="flex items-center space-x-4">
-          <button onClick={() => setShowSidebar(!showSidebar)} className="flex flex-col space-y-1">
-            <span className="block w-6 h-0.5 bg-white"></span>
-            <span className="block w-6 h-0.5 bg-white"></span>
-            <span className="block w-6 h-0.5 bg-white"></span>
-          </button>
-          <Link href={userType === "recruiter" ? "/recruiter/dashboard" : "/dashboard"} className="nav-link">
-            HOME
-          </Link>
-          <Link href="/about" className="nav-link">
-            ABOUT
-          </Link>
-          <Link href="/contact" className="nav-link">
-            CONTACT US
-          </Link>
+    <nav className="bg-[#313131] p-4 flex items-center justify-between shadow-md relative">
+      {/* Hamburger Menu (Left) */}
+      <div className="flex items-center">
+        <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="focus:outline-none mr-4">
+          <Menu className="h-6 w-6 text-white" />
+        </button>
+        <div
+          className={`fixed top-0 left-0 h-full w-64 bg-[#313131] shadow-md z-20 transform transition-transform duration-300 ease-in-out ${
+            isMenuOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
+        >
+          <div className="flex flex-col space-y-4 p-4 mt-16">
+            {menuOptions.map((option) => (
+              <Link
+                key={option.label}
+                href={option.href}
+                className="nav-link text-white hover:text-gray-300"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                {option.label}
+              </Link>
+            ))}
+            <Link
+              href="/profile"
+              className="nav-link text-white hover:text-gray-300"
+              onClick={() => setIsMenuOpen(false)}
+            >
+              Profile Details
+            </Link>
+            <button onClick={handleLogout} className="nav-link text-white hover:text-gray-300 text-left">
+              Logout
+            </button>
+          </div>
         </div>
+        {/* Overlay for closing menu on click outside */}
+        {isMenuOpen && (
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 z-10"
+            onClick={() => setIsMenuOpen(false)}
+          ></div>
+        )}
+      </div>
 
-        <div className="relative">
-          <button
-            onClick={() => setShowDropdown(!showDropdown)}
-            className="w-8 h-8 bg-black rounded-full flex items-center justify-center"
-          >
-            <span className="text-white">•</span>
-          </button>
+      {/* Middle Links (Home, Contact, About) */}
+      <div className="flex-1 flex justify-center space-x-6">
+        <Link href={userType === "recruiter" ? "/recruiter/dashboard" : "/dashboard"} className="nav-link text-white hover:text-gray-300">
+          Home
+        </Link>
+        <Link href="/contact" className="nav-link text-white hover:text-gray-300">
+          Contact
+        </Link>
+        <Link href="/about" className="nav-link text-white hover:text-gray-300">
+          About
+        </Link>
+      </div>
 
-          {showDropdown && (
-            <div className="absolute right-0 mt-2 w-40 dropdown-menu z-30">
-              <div className="dropdown-item">Profile Details</div>
-              <div className="dropdown-item">Logout</div>
-            </div>
-          )}
-        </div>
-      </header>
-
-      <Sidebar isOpen={showSidebar} onClose={() => setShowSidebar(false)} userType={userType} />
-    </>
-  )
+      {/* Profile Picture (Right) */}
+      <div className="relative">
+        <img
+          src={`http://localhost:5000${profilePic}`}
+          alt="Profile"
+          className="w-10 h-10 rounded-full object-cover cursor-pointer"
+          onError={(e) => (e.target.src = "/default.jpg")}
+          onClick={() => setIsProfileOpen(!isProfileOpen)}
+        />
+        {isProfileOpen && (
+          <div className="absolute right-0 mt-2 w-48 dropdown-menu rounded-md shadow-lg z-10">
+            <Link
+              href="/profile"
+              className="dropdown-item block text-white hover:bg-[#4a4a4a]"
+              onClick={() => setIsProfileOpen(false)}
+            >
+              Profile Details
+            </Link>
+            <button
+              onClick={handleLogout}
+              className="dropdown-item block w-full text-left text-white hover:bg-[#4a4a4a]"
+            >
+              Logout
+            </button>
+          </div>
+        )}
+      </div>
+    </nav>
+  );
 }
-

@@ -1,24 +1,24 @@
-import type React from "react"
-import type { Metadata } from "next"
-import { Inter } from "next/font/google"
-import "./globals.css"
+"use client";
 
-const inter = Inter({ subsets: ["latin"] })
+import { useState, useEffect } from "react";
+import Toast from "@/components/Toast";
+import "./globals.css";
 
-export const metadata: Metadata = {
-  title: "Job Finder",
-  description: "Find your job in one tap",
-}
+export default function RootLayout({ children }) {
+  const [toast, setToast] = useState(null);
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode
-}>) {
+  useEffect(() => {
+    const listener = (e) => setToast(e.detail);
+    window.addEventListener("show-toast", listener);
+    return () => window.removeEventListener("show-toast", listener);
+  }, []);
+
   return (
     <html lang="en">
-      <body className={inter.className}>{children}</body>
+      <body className="min-h-screen bg-[#373737]">
+        {children}
+        {toast && <Toast message={toast} onClose={() => setToast(null)} />}
+      </body>
     </html>
-  )
+  );
 }
-
