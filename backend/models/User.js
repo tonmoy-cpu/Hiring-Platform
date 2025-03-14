@@ -6,13 +6,13 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true },
   userType: { type: String, enum: ["recruiter", "candidate"], required: true },
   profilePic: { type: String, default: "default.jpg" },
-  // Parsed Resume Fields for Candidates
   resumeParsed: {
     contact: { name: String, email: String, phone: String },
     skills: [{ type: String }],
     experience: [{ title: String, company: String, years: String }],
     education: [{ degree: String, school: String, year: String }],
   },
+  resumeFile: { type: String }, // Path to stored resume file
   company: { type: String }, // Recruiter field
   createdAt: { type: Date, default: Date.now },
 });

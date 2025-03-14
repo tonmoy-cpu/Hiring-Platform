@@ -6,6 +6,7 @@ const { extractResumeDetails } = require("../utils/ai");
 const multer = require("multer");
 const pdfParse = require("pdf-parse");
 const fs = require("fs").promises;
+const path = require("path");
 
 const upload = multer({ dest: "uploads/resumes/" });
 
@@ -15,25 +16,21 @@ router.post("/extract", auth, upload.single("resume"), async (req, res) => {
   try {
     if (!req.file) throw new Error("No resume file uploaded");
 
-    console.log("Processing file:", req.file.path);
     const pdfPath = req.file.path;
     const dataBuffer = await fs.readFile(pdfPath);
-    console.log("PDF read successfully");
-
     const pdfData = await pdfParse(dataBuffer);
     const resumeText = pdfData.text;
-    console.log("PDF text extracted:", resumeText.slice(0, 100)); // Log first 100 chars
 
     const parsedData = await extractResumeDetails(resumeText);
-    console.log("Parsed data:", parsedData);
+    const resumePath = `/uploads/resumes/${req.file.filename}.pdf`;
+    await fs.rename(pdfPath, path.join(__dirname, "../..", resumePath));
 
-    await User.findByIdAndUpdate(req.user.id, { resumeParsed: parsedData });
-    console.log("User updated in MongoDB");
+    await User.findByIdAndUpdate(req.user.id, {
+      resumeParsed: parsedData,
+      resumeFile: resumePath,
+    });
 
-    await fs.unlink(pdfPath);
-    console.log("File deleted");
-
-    res.json(parsedData);
+    res.json({ parsedData, resumeText });
   } catch (err) {
     console.error("Error in /extract:", err.message, err.stack);
     res.status(500).json({ msg: "Server error", error: err.message });

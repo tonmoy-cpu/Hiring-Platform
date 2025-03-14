@@ -8,21 +8,25 @@ const { analyzeResumeAgainstJob } = require("../utils/ai");
 router.post("/apply", auth, async (req, res) => {
   if (req.user.userType !== "candidate") return res.status(403).json({ msg: "Not authorized" });
 
-  const { jobId, resumeText } = req.body;
+  const { jobId, resumeText, coverLetter } = req.body;
   try {
     const job = await Job.findById(jobId);
+    if (!job) return res.status(404).json({ msg: "Job not found" });
+
     const { score, feedback } = await analyzeResumeAgainstJob(resumeText, job);
 
     const application = new Application({
       candidate: req.user.id,
       job: jobId,
       resumeText,
+      coverLetter,
       compatibilityScore: score,
       feedback,
     });
     await application.save();
     res.json(application);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ msg: "Server error" });
   }
 });
@@ -34,10 +38,11 @@ router.get("/", auth, async (req, res) => {
         ? { job: { $in: await Job.find({ recruiter: req.user.id }).select("_id") } }
         : { candidate: req.user.id };
     const applications = await Application.find(query)
-      .populate("candidate", "username resumeParsed")
+      .populate("candidate", "username resumeParsed resumeFile profilePic")
       .populate("job", "title skills");
     res.json(applications);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ msg: "Server error" });
   }
 });
@@ -51,6 +56,7 @@ router.post("/analyze", auth, async (req, res) => {
     const analysis = await analyzeResumeAgainstJob(resumeText, job);
     res.json(analysis);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ msg: "Server error" });
   }
 });

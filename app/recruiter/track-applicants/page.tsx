@@ -1,12 +1,13 @@
 "use client";
 
 import Navbar from "@/components/navbar";
-import { CircleUser, FileText, MoreHorizontal } from "lucide-react";
+import { CircleUser, FileText, MoreHorizontal, MessageSquare } from "lucide-react";
 import { useState, useEffect } from "react";
 
 export default function TrackApplicants() {
   const [applications, setApplications] = useState([]);
   const [selectedApplicant, setSelectedApplicant] = useState(null);
+  const [analysis, setAnalysis] = useState(null);
 
   useEffect(() => {
     const fetchApplications = async () => {
@@ -20,14 +21,28 @@ export default function TrackApplicants() {
     fetchApplications();
   }, []);
 
+  const handleChat = (app) => {
+    alert(`Chat feature coming soon for ${app.candidate.username}`);
+    // Placeholder for future chat implementation
+  };
+
   const handleAnalyze = async (app) => {
     const res = await fetch("http://localhost:5000/api/applications/analyze", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${localStorage.getItem("token")}`,
+      },
       body: JSON.stringify({ resumeText: app.resumeText, jobId: app.job._id }),
     });
-    const analysis = await res.json();
-    setSelectedApplicant({ ...app, analysis });
+    const analysisData = await res.json();
+    setAnalysis(analysisData);
+    setSelectedApplicant(app);
+  };
+
+  const handleDetails = (app) => {
+    setSelectedApplicant(app);
+    setAnalysis(null); // Reset analysis when viewing details
   };
 
   return (
@@ -46,13 +61,27 @@ export default function TrackApplicants() {
                 <p className="text-sm">{app.job.title}</p>
               </div>
               <div className="flex items-center space-x-2">
-                <button onClick={() => setSelectedApplicant(app)} className="p-2 rounded-full bg-[#313131] hover:bg-[#4a4a4a] transition">
-                  <FileText className="h-5 w-5 text-white" />
+                <button
+                  onClick={() => handleChat(app)}
+                  className="p-2 rounded-full bg-[#313131] hover:bg-[#4a4a4a] transition"
+                  title="Chat"
+                >
+                  <MessageSquare className="h-5 w-5 text-white" />
                 </button>
-                <button onClick={() => handleAnalyze(app)} className="p-2 rounded-full bg-[#313131] hover:bg-[#4a4a4a] transition">
+                <button
+                  onClick={() => handleAnalyze(app)}
+                  className="p-2 rounded-full bg-[#313131] hover:bg-[#4a4a4a] transition"
+                  title="Analyze with AI"
+                >
                   <MoreHorizontal className="h-5 w-5 text-white" />
                 </button>
-                <button className="bg-[#313131] text-white text-sm px-4 py-2 rounded hover:bg-[#4a4a4a] transition">Select</button>
+                <button
+                  onClick={() => handleDetails(app)}
+                  className="p-2 rounded-full bg-[#313131] hover:bg-[#4a4a4a] transition"
+                  title="Details"
+                >
+                  <FileText className="h-5 w-5 text-white" />
+                </button>
               </div>
             </div>
           ))}
@@ -63,48 +92,76 @@ export default function TrackApplicants() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-[#d9d9d9] p-6 rounded-lg shadow-lg w-full max-w-2xl">
             <h2 className="text-xl font-bold text-[#313131] mb-4">{selectedApplicant.candidate.username}’s Details</h2>
-            {selectedApplicant.resumeText ? (
+            {analysis ? (
+              <div className="mt-4">
+                <h3 className="font-bold text-[#313131]">AI Analysis</h3>
+                <p><strong>Score:</strong> {analysis.score}%</p>
+                <p><strong>Feedback:</strong> {analysis.feedback}</p>
+                <p><strong>Missing Skills:</strong> {analysis.missingSkills?.join(", ") || "None"}</p>
+              </div>
+            ) : (
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <h3 className="font-bold">Contact</h3>
-                    <p>{selectedApplicant.candidate.resumeParsed?.contact?.name || "N/A"}<br/>
-                       {selectedApplicant.candidate.resumeParsed?.contact?.email || "N/A"}<br/>
-                       {selectedApplicant.candidate.resumeParsed?.contact?.phone || "N/A"}</p>
+                    <h3 className="font-bold text-[#313131]">Contact</h3>
+                    <p>
+                      {selectedApplicant.candidate.resumeParsed?.contact?.name || "N/A"}<br />
+                      {selectedApplicant.candidate.resumeParsed?.contact?.email || "N/A"}<br />
+                      {selectedApplicant.candidate.resumeParsed?.contact?.phone || "N/A"}
+                    </p>
                   </div>
                   <div>
-                    <h3 className="font-bold">Skills</h3>
-                    <ul className="list-disc pl-4">{selectedApplicant.candidate.resumeParsed?.skills?.map(s => <li key={s}>{s}</li>) || "N/A"}</ul>
+                    <h3 className="font-bold text-[#313131]">Skills</h3>
+                    <ul className="list-disc pl-4 text-[#313131]">
+                      {selectedApplicant.candidate.resumeParsed?.skills?.map((s) => <li key={s}>{s}</li>) || <li>N/A</li>}
+                    </ul>
                   </div>
                   <div>
-                    <h3 className="font-bold">Experience</h3>
-                    {selectedApplicant.candidate.resumeParsed?.experience?.map((e, i) => <p key={i}>{e.title} at {e.company} ({e.years})</p>) || "N/A"}
+                    <h3 className="font-bold text-[#313131]">Experience</h3>
+                    {selectedApplicant.candidate.resumeParsed?.experience?.map((e, i) => (
+                      <p key={i}>
+                        {e.title} at {e.company} ({e.years})
+                      </p>
+                    )) || <p>N/A</p>}
                   </div>
                   <div>
-                    <h3 className="font-bold">Education</h3>
-                    {selectedApplicant.candidate.resumeParsed?.education?.map((e, i) => <p key={i}>{e.degree}, {e.school} ({e.year})</p>) || "N/A"}
+                    <h3 className="font-bold text-[#313131]">Education</h3>
+                    {selectedApplicant.candidate.resumeParsed?.education?.map((e, i) => (
+                      <p key={i}>
+                        {e.degree}, {e.school} ({e.year})
+                      </p>
+                    )) || <p>N/A</p>}
                   </div>
                 </div>
-                {selectedApplicant.analysis && (
-                  <div className="mt-4">
-                    <h3 className="font-bold">Analysis</h3>
-                    <p><strong>Score:</strong> {selectedApplicant.analysis.score}%</p>
-                    <p><strong>Feedback:</strong> {selectedApplicant.analysis.feedback}</p>
-                    <p><strong>Missing Skills:</strong> {selectedApplicant.analysis.missingSkills?.join(", ") || "None"}</p>
-                  </div>
-                )}
+                <div className="mt-4">
+                  <h3 className="font-bold text-[#313131]">Cover Letter</h3>
+                  <p className="text-[#313131]">{selectedApplicant.coverLetter || "N/A"}</p>
+                </div>
+                <div className="mt-4">
+                  <h3 className="font-bold text-[#313131]">Resume</h3>
+                  {selectedApplicant.candidate.resumeFile ? (
+                    <a
+                      href={`http://localhost:5000${selectedApplicant.candidate.resumeFile}`}
+                      download
+                      className="text-[#313131] underline hover:text-[#4a4a4a]"
+                    >
+                      Download Resume
+                    </a>
+                  ) : (
+                    <p>No resume available</p>
+                  )}
+                </div>
               </>
-            ) : (
-              <p>No resume uploaded.</p>
             )}
-            <button onClick={() => setSelectedApplicant(null)} className="mt-4 bg-[#313131] text-white px-4 py-2 rounded hover:bg-[#4a4a4a] transition">Close</button>
+            <button
+              onClick={() => setSelectedApplicant(null)}
+              className="mt-4 bg-[#313131] text-white px-4 py-2 rounded hover:bg-[#4a4a4a] transition"
+            >
+              Close
+            </button>
           </div>
         </div>
       )}
     </div>
   );
-}
-
-function showToast(message) {
-  window.dispatchEvent(new CustomEvent("show-toast", { detail: message }));
 }
