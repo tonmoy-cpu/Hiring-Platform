@@ -70,10 +70,48 @@ router.post("/extract", auth, upload.single("resume"), async (req, res) => {
     console.error("Error in /extract:", err.message, err.stack);
     res.status(500).json({ msg: "Server error", error: err.message });
   } finally {
-    // No cleanup needed since file is saved correctly
     if (req.file) {
       console.log("File processed, stored at:", req.file.path);
     }
+  }
+});
+
+// Download Resume Endpoint
+router.get("/download/:userId", auth, async (req, res) => {
+  if (req.user.userType !== "recruiter") {
+    console.log("Unauthorized download attempt by user:", req.user.id);
+    return res.status(403).json({ msg: "Not authorized" });
+  }
+
+  try {
+    const user = await User.findById(req.params.userId).select("resumeFile");
+    if (!user || !user.resumeFile) {
+      console.log("No resume found for user:", req.params.userId);
+      return res.status(404).json({ msg: "Resume not found" });
+    }
+
+    const filePath = path.join(__dirname, "../..", user.resumeFile);
+    console.log("Serving resume from:", filePath);
+
+    // Check if file exists
+    const fileExists = await fs.access(filePath).then(() => true).catch(() => false);
+    if (!fileExists) {
+      console.log("File not found on disk:", filePath);
+      return res.status(404).json({ msg: "Resume file not found on server" });
+    }
+
+    // Serve the file with download headers
+    res.download(filePath, path.basename(user.resumeFile), (err) => {
+      if (err) {
+        console.error("Error serving file:", err.message);
+        res.status(500).json({ msg: "Error downloading file" });
+      } else {
+        console.log("Resume downloaded successfully for user:", req.params.userId);
+      }
+    });
+  } catch (err) {
+    console.error("Error in /download:", err.message, err.stack);
+    res.status(500).json({ msg: "Server error", error: err.message });
   }
 });
 

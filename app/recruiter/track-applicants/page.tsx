@@ -56,6 +56,38 @@ export default function TrackApplicants() {
     setAnalysis(null);
   };
 
+  const handleDownloadResume = async (userId) => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("Please log in to download the resume.");
+      return;
+    }
+
+    try {
+      const res = await fetch(`http://localhost:5000/api/resume/download/${userId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.msg || "Failed to download resume");
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `resume-${userId}.pdf`; // Customize filename as needed
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      console.log("Resume downloaded for user:", userId);
+    } catch (err) {
+      console.error("Download error:", err);
+      alert("Error: " + err.message);
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-[#373737]">
       <Navbar userType="recruiter" />
@@ -138,13 +170,12 @@ export default function TrackApplicants() {
                 <div className="mt-4">
                   <h3 className="font-bold text-[#313131]">Resume</h3>
                   {selectedApplicant.candidate.resumeFile ? (
-                    <a
-                      href={`http://localhost:5000${selectedApplicant.candidate.resumeFile}`}
-                      download
+                    <button
+                      onClick={() => handleDownloadResume(selectedApplicant.candidate._id)}
                       className="text-[#313131] underline hover:text-[#4a4a4a]"
                     >
                       Download Resume
-                    </a>
+                    </button>
                   ) : (
                     <p>No resume available</p>
                   )}

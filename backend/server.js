@@ -1,13 +1,15 @@
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
+const path = require("path"); // Add this for clarity, though not used here
 require("dotenv").config();
 
 const app = express();
 
 app.use(cors({ origin: "http://localhost:3000" }));
 app.use(express.json());
-app.use("/uploads", express.static("uploads")); // Serves files from root uploads/
+// Optional: Keep static serving for profile pics or other files
+app.use("/uploads", express.static("uploads"));
 
 mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
   .then(() => console.log("MongoDB connected"))

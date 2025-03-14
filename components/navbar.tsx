@@ -8,18 +8,34 @@ import { useRouter } from "next/navigation";
 export default function Navbar({ userType = "candidate" }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [profilePic, setProfilePic] = useState("/default.jpg");
+  const [profilePic, setProfilePic] = useState("/uploads/default.jpg");
+  const [imageError, setImageError] = useState(false);
   const router = useRouter();
+
+  // Log userType to debug
+  console.log("Navbar rendered with userType:", userType);
 
   useEffect(() => {
     const fetchProfile = async () => {
       const token = localStorage.getItem("token");
       if (token) {
-        const res = await fetch("http://localhost:5000/api/auth/profile", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        setProfilePic(data.profilePic || "/default.jpg");
+        try {
+          const res = await fetch("http://localhost:5000/api/auth/profile", {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (!res.ok) throw new Error(`Profile fetch failed with status: ${res.status}`);
+          const data = await res.json();
+          console.log("Profile data received:", data);
+          const newProfilePic = data.profilePic || "/uploads/default.jpg";
+          console.log("Setting profilePic to:", newProfilePic);
+          setProfilePic(newProfilePic);
+          setImageError(false);
+        } catch (err) {
+          console.error("Error fetching profile:", err.message);
+          setProfilePic("/uploads/default.jpg");
+        }
+      } else {
+        console.log("No token found, using default profile pic");
       }
     };
     fetchProfile();
@@ -32,7 +48,17 @@ export default function Navbar({ userType = "candidate" }) {
     setIsProfileOpen(false);
   };
 
-  // Dynamic menu options based on userType
+  const handleImageError = (e) => {
+    if (!imageError) {
+      console.log("Initial image failed to load:", e.target.src);
+      e.target.src = "/default.jpg";
+      setImageError(true);
+    } else {
+      console.log("Fallback image also failed, using remote placeholder:", e.target.src);
+      e.target.src = "https://via.placeholder.com/40";
+    }
+  };
+
   const menuOptions = userType === "recruiter"
     ? [
         { label: "Dashboard", href: "/recruiter/dashboard" },
@@ -51,7 +77,6 @@ export default function Navbar({ userType = "candidate" }) {
 
   return (
     <nav className="bg-[#313131] p-4 flex items-center justify-between shadow-md relative">
-      {/* Hamburger Menu (Left) */}
       <div className="flex items-center">
         <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="focus:outline-none mr-4">
           <Menu className="h-6 w-6 text-white" />
@@ -84,7 +109,6 @@ export default function Navbar({ userType = "candidate" }) {
             </button>
           </div>
         </div>
-        {/* Overlay for closing menu on click outside */}
         {isMenuOpen && (
           <div
             className="fixed inset-0 bg-black bg-opacity-50 z-10"
@@ -93,7 +117,6 @@ export default function Navbar({ userType = "candidate" }) {
         )}
       </div>
 
-      {/* Middle Links (Home, Contact, About) */}
       <div className="flex-1 flex justify-center space-x-6">
         <Link href={userType === "recruiter" ? "/recruiter/dashboard" : "/dashboard"} className="nav-link text-white hover:text-gray-300">
           Home
@@ -106,13 +129,12 @@ export default function Navbar({ userType = "candidate" }) {
         </Link>
       </div>
 
-      {/* Profile Picture (Right) */}
       <div className="relative">
         <img
           src={`http://localhost:5000${profilePic}`}
           alt="Profile"
           className="w-10 h-10 rounded-full object-cover cursor-pointer"
-          onError={(e) => (e.target.src = "/default.jpg")}
+          onError={handleImageError}
           onClick={() => setIsProfileOpen(!isProfileOpen)}
         />
         {isProfileOpen && (

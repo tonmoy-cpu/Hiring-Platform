@@ -62,8 +62,8 @@ router.post("/register", uploadMiddleware, async (req, res) => {
     let user = await User.findOne({ email });
     if (user) return res.status(400).json({ msg: "User already exists" });
 
-    const profilePicFile = req.files.find(file => file.fieldname === "profilePic");
-    const resumeFile = req.files.find(file => file.fieldname === "resume");
+    const profilePicFile = req.files && req.files.find(file => file.fieldname === "profilePic");
+    const resumeFile = req.files && req.files.find(file => file.fieldname === "resume");
     console.log("Profile pic file:", profilePicFile ? profilePicFile.filename : "None");
     console.log("Resume file:", resumeFile ? resumeFile.filename : "None");
 
@@ -73,7 +73,7 @@ router.post("/register", uploadMiddleware, async (req, res) => {
       email,
       password: await bcrypt.hash(password, 10),
       userType,
-      profilePic: profilePicFile ? `/uploads/${profilePicFile.filename}` : "default.jpg",
+      profilePic: profilePicFile ? `/uploads/${profilePicFile.filename}` : "/uploads/default.jpg",
     });
 
     console.log("Saving user to database");
@@ -114,45 +114,52 @@ router.post("/register", uploadMiddleware, async (req, res) => {
 });
 
 router.post("/login", async (req, res) => {
-    const { email, password } = req.body;
-    console.log("Login attempt:", { email, password }); // Debug input
-  
-    try {
-      console.log("Fetching user from database");
-      const user = await User.findOne({ email });
-      if (!user) {
-        console.log("User not found for email:", email);
-        return res.status(400).json({ msg: "Invalid credentials" });
-      }
-      console.log("User found:", user.email);
-  
-      console.log("Comparing passwords");
-      const isMatch = await bcrypt.compare(password, user.password);
-      if (!isMatch) {
-        console.log("Password mismatch for user:", email);
-        return res.status(400).json({ msg: "Invalid credentials" });
-      }
-      console.log("Password matched");
-  
-      console.log("Generating JWT token");
-      const payload = { user: { id: user.id, userType: user.userType } };
-      const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: "1h" });
-      console.log("Token generated successfully");
-  
-      res.json({ token });
-    } catch (err) {
-      console.error("Error in /login:", err.message, err.stack);
-      res.status(500).json({ msg: "Server error", error: err.message });
+  const { email, password } = req.body;
+  console.log("Login attempt:", { email, password });
+
+  try {
+    console.log("Fetching user from database");
+    const user = await User.findOne({ email });
+    if (!user) {
+      console.log("User not found for email:", email);
+      return res.status(400).json({ msg: "Invalid credentials" });
     }
-  });
+    console.log("User found:", user.email);
+
+    console.log("Comparing passwords");
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      console.log("Password mismatch for user:", email);
+      return res.status(400).json({ msg: "Invalid credentials" });
+    }
+    console.log("Password matched");
+
+    console.log("Generating JWT token");
+    const payload = { user: { id: user.id, userType: user.userType } };
+    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: "1h" });
+    console.log("Token generated successfully");
+
+    res.json({ token });
+  } catch (err) {
+    console.error("Error in /login:", err.message, err.stack);
+    res.status(500).json({ msg: "Server error", error: err.message });
+  }
+});
 
 router.get("/profile", auth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("-password");
+    if (!user) {
+      console.log("User not found for ID:", req.user.id);
+      return res.status(404).json({ msg: "User not found" });
+    }
+    // Ensure profilePic is always a valid string
+    user.profilePic = user.profilePic || "/uploads/default.jpg";
+    console.log("Returning profile:", { username: user.username, profilePic: user.profilePic });
     res.json(user);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ msg: "Server error" });
+    console.error("Error in /profile:", err.message, err.stack);
+    res.status(500).json({ msg: "Server error", error: err.message });
   }
 });
 
@@ -165,6 +172,8 @@ router.put("/profile", auth, async (req, res) => {
     user.resumeParsed = resumeParsed || user.resumeParsed;
     await user.save();
 
+    // Ensure profilePic is included in response
+    user.profilePic = user.profilePic || "/uploads/default.jpg";
     res.json(user);
   } catch (err) {
     console.error("Error in PUT /profile:", err.message, err.stack);
