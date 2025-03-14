@@ -7,7 +7,7 @@ const app = express();
 
 app.use(cors({ origin: "http://localhost:3000" }));
 app.use(express.json());
-app.use("/uploads", express.static("uploads"));
+app.use("/uploads", express.static("uploads")); // Serves files from root uploads/
 
 mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
   .then(() => console.log("MongoDB connected"))

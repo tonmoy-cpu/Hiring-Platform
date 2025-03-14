@@ -35,6 +35,10 @@ export default function Dashboard() {
         const jobsData = await jobsRes.json();
         const appsData = await appsRes.json();
 
+        console.log("Fetched profile:", profile);
+        console.log("Fetched jobs:", jobsData);
+        console.log("Fetched applications:", appsData);
+
         setUserSkills(profile.resumeParsed?.skills || []);
         setJobs(jobsData);
         setAppliedJobs(appsData.map(app => app.job._id));
