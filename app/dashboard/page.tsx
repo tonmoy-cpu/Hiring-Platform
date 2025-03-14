@@ -7,7 +7,8 @@ import { useRouter } from "next/navigation";
 
 export default function Dashboard() {
   const [jobs, setJobs] = useState([]);
-  const [appliedJobs, setAppliedJobs] = useState<string[]>([]);
+  const [appliedJobs, setAppliedJobs] = useState([]);
+  const [userSkills, setUserSkills] = useState([]);
   const [hoveredJob, setHoveredJob] = useState(null);
   const [showApplyModal, setShowApplyModal] = useState(null);
   const [resumeFile, setResumeFile] = useState(null);
@@ -22,12 +23,19 @@ export default function Dashboard() {
         return;
       }
       try {
-        const [jobsRes, appsRes] = await Promise.all([
+        const [profileRes, jobsRes, appsRes] = await Promise.all([
+          fetch("http://localhost:5000/api/auth/profile", { headers: { Authorization: `Bearer ${token}` } }),
           fetch("http://localhost:5000/api/jobs", { headers: { Authorization: `Bearer ${token}` } }),
           fetch("http://localhost:5000/api/applications", { headers: { Authorization: `Bearer ${token}` } }),
         ]);
+
+        if (!profileRes.ok || !jobsRes.ok || !appsRes.ok) throw new Error("Failed to fetch data");
+
+        const profile = await profileRes.json();
         const jobsData = await jobsRes.json();
         const appsData = await appsRes.json();
+
+        setUserSkills(profile.resumeParsed?.skills || []);
         setJobs(jobsData);
         setAppliedJobs(appsData.map(app => app.job._id));
       } catch (err) {
@@ -38,17 +46,7 @@ export default function Dashboard() {
   }, [router]);
 
   const getMissingSkills = (job) => {
-    // Fetch user skills from profile for accurate comparison
-    const token = localStorage.getItem("token");
-    const fetchSkills = async () => {
-      const res = await fetch("http://localhost:5000/api/auth/profile", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const user = await res.json();
-      const userSkills = user.resumeParsed?.skills || [];
-      return job.skills.filter(skill => !userSkills.includes(skill));
-    };
-    return fetchSkills();
+    return job.skills.filter(skill => !userSkills.includes(skill));
   };
 
   const handleApply = async (jobId) => {
@@ -67,6 +65,7 @@ export default function Dashboard() {
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
+      if (!extractRes.ok) throw new Error("Resume extraction failed");
       const { resumeText } = await extractRes.json();
 
       const applyRes = await fetch("http://localhost:5000/api/applications/apply", {
@@ -77,13 +76,14 @@ export default function Dashboard() {
         },
         body: JSON.stringify({ jobId, resumeText, coverLetter }),
       });
-      if (!applyRes.ok) throw new Error("Failed to apply");
+      if (!applyRes.ok) throw new Error("Application submission failed");
       setAppliedJobs((prev) => [...prev, jobId]);
       setShowApplyModal(null);
       setResumeFile(null);
       setCoverLetter("");
-      alert(`Applied to ${jobs.find((j) => j._id === jobId)?.title}`);
+      alert("Application submitted successfully!");
     } catch (err) {
+      console.error("Error applying:", err);
       alert("Error: " + err.message);
     }
   };
@@ -102,12 +102,12 @@ export default function Dashboard() {
           {jobs.map((job) => (
             <div
               key={job._id}
-              className="job-card p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 relative"
+              className="job-card p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 relative bg-[#d9d9d9]"
               onMouseEnter={() => setHoveredJob(job)}
               onMouseLeave={() => setHoveredJob(null)}
             >
-              <h3 className="font-semibold text-lg mb-2">{job.title}</h3>
-              <div className="text-sm text-gray-800">
+              <h3 className="font-semibold text-lg mb-2 text-[#313131]">{job.title}</h3>
+              <div className="text-sm text-[#313131]">
                 <p>{job.details}</p>
                 <p>Skills: {job.skills.join(", ")}</p>
               </div>
@@ -125,13 +125,14 @@ export default function Dashboard() {
                 </button>
               </div>
               {hoveredJob === job && (
-                <div className="absolute top-0 left-0 w-full bg-[#d9d9d9] p-4 rounded-lg shadow-lg z-10">
-                  <h4 className="text-[#313131] font-semibold">Missing Skills:</h4>
-                  <ul className="list-disc pl-4 text-[#313131]">
-                    {(async () => {
-                      const missing = await getMissingSkills(job);
-                      return missing.length ? missing.map(skill => <li key={skill}>{skill}</li>) : <li>None</li>;
-                    })()}
+                <div className="absolute top-0 left-0 w-full bg-[#313131] p-4 rounded-lg shadow-lg z-10">
+                  <h4 className="text-white font-semibold">Missing Skills:</h4>
+                  <ul className="list-disc pl-4 text-white">
+                    {getMissingSkills(job).length ? (
+                      getMissingSkills(job).map((skill) => <li key={skill}>{skill}</li>)
+                    ) : (
+                      <li>None</li>
+                    )}
                   </ul>
                 </div>
               )}
@@ -149,7 +150,7 @@ export default function Dashboard() {
                   <input
                     type="file"
                     accept=".pdf"
-                    onChange={(e) => setResumeFile(e.target.files[0])}
+                    onChange={(e) => setResumeFile(e.target.files ? e.target.files[0] : null)}
                     className="w-full p-2 rounded-lg border border-[#313131] text-[#313131]"
                   />
                 </div>
@@ -183,21 +184,9 @@ export default function Dashboard() {
         )}
 
         <div className="mt-8 flex flex-wrap justify-around gap-4">
-          <Link href="/resume-extraction">
-            <button className="bg-[#313131] text-white p-3 rounded-lg hover:bg-[#4a4a4a] transition duration-200 shadow-md w-48">
-              Resume Extraction
-            </button>
-          </Link>
-          <Link href="/track-applications">
-            <button className="bg-[#313131] text-white p-3 rounded-lg hover:bg-[#4a4a4a] transition duration-200 shadow-md w-48">
-              Track Applications
-            </button>
-          </Link>
-          <Link href="/analytics">
-            <button className="bg-[#313131] text-white p-3 rounded-lg hover:bg-[#4a4a4a] transition duration-200 shadow-md w-48">
-              AI Analytics
-            </button>
-          </Link>
+          <Link href="/resume-extraction"><button className="bg-[#313131] text-white p-3 rounded-lg hover:bg-[#4a4a4a] transition duration-200 shadow-md w-48">Resume Extraction</button></Link>
+          <Link href="/track-applications"><button className="bg-[#313131] text-white p-3 rounded-lg hover:bg-[#4a4a4a] transition duration-200 shadow-md w-48">Track Applications</button></Link>
+          <Link href="/analytics"><button className="bg-[#313131] text-white p-3 rounded-lg hover:bg-[#4a4a4a] transition duration-200 shadow-md w-48">AI Analytics</button></Link>
         </div>
       </main>
     </div>

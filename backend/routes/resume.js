@@ -12,10 +12,9 @@ const upload = multer({ dest: "uploads/resumes/" });
 
 router.post("/extract", auth, upload.single("resume"), async (req, res) => {
   if (req.user.userType !== "candidate") return res.status(403).json({ msg: "Not authorized" });
+  if (!req.file) return res.status(400).json({ msg: "No resume uploaded" });
 
   try {
-    if (!req.file) throw new Error("No resume file uploaded");
-
     const pdfPath = req.file.path;
     const dataBuffer = await fs.readFile(pdfPath);
     const pdfData = await pdfParse(dataBuffer);
@@ -32,7 +31,7 @@ router.post("/extract", auth, upload.single("resume"), async (req, res) => {
 
     res.json({ parsedData, resumeText });
   } catch (err) {
-    console.error("Error in /extract:", err.message, err.stack);
+    console.error("Error in /extract:", err);
     res.status(500).json({ msg: "Server error", error: err.message });
   }
 });

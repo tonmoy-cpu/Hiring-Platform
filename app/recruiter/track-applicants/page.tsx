@@ -12,37 +12,48 @@ export default function TrackApplicants() {
   useEffect(() => {
     const fetchApplications = async () => {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/applications", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      setApplications(data);
+      if (!token) return;
+      try {
+        const res = await fetch("http://localhost:5000/api/applications", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error("Failed to fetch applications");
+        const data = await res.json();
+        setApplications(data);
+      } catch (err) {
+        console.error("Error fetching applications:", err);
+      }
     };
     fetchApplications();
   }, []);
 
   const handleChat = (app) => {
-    alert(`Chat feature coming soon for ${app.candidate.username}`);
-    // Placeholder for future chat implementation
+    alert(`Chat with ${app.candidate.username} coming soon!`);
   };
 
   const handleAnalyze = async (app) => {
-    const res = await fetch("http://localhost:5000/api/applications/analyze", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("token")}`,
-      },
-      body: JSON.stringify({ resumeText: app.resumeText, jobId: app.job._id }),
-    });
-    const analysisData = await res.json();
-    setAnalysis(analysisData);
-    setSelectedApplicant(app);
+    try {
+      const res = await fetch("http://localhost:5000/api/applications/analyze", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: JSON.stringify({ resumeText: app.resumeText, jobId: app.job._id }),
+      });
+      if (!res.ok) throw new Error("Analysis failed");
+      const analysisData = await res.json();
+      setAnalysis(analysisData);
+      setSelectedApplicant(app);
+    } catch (err) {
+      console.error("Error analyzing:", err);
+      alert("Error: " + err.message);
+    }
   };
 
   const handleDetails = (app) => {
     setSelectedApplicant(app);
-    setAnalysis(null); // Reset analysis when viewing details
+    setAnalysis(null);
   };
 
   return (
@@ -61,25 +72,13 @@ export default function TrackApplicants() {
                 <p className="text-sm">{app.job.title}</p>
               </div>
               <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => handleChat(app)}
-                  className="p-2 rounded-full bg-[#313131] hover:bg-[#4a4a4a] transition"
-                  title="Chat"
-                >
+                <button onClick={() => handleChat(app)} className="p-2 rounded-full bg-[#313131] hover:bg-[#4a4a4a] transition" title="Chat">
                   <MessageSquare className="h-5 w-5 text-white" />
                 </button>
-                <button
-                  onClick={() => handleAnalyze(app)}
-                  className="p-2 rounded-full bg-[#313131] hover:bg-[#4a4a4a] transition"
-                  title="Analyze with AI"
-                >
+                <button onClick={() => handleAnalyze(app)} className="p-2 rounded-full bg-[#313131] hover:bg-[#4a4a4a] transition" title="Analyze with AI">
                   <MoreHorizontal className="h-5 w-5 text-white" />
                 </button>
-                <button
-                  onClick={() => handleDetails(app)}
-                  className="p-2 rounded-full bg-[#313131] hover:bg-[#4a4a4a] transition"
-                  title="Details"
-                >
+                <button onClick={() => handleDetails(app)} className="p-2 rounded-full bg-[#313131] hover:bg-[#4a4a4a] transition" title="Details">
                   <FileText className="h-5 w-5 text-white" />
                 </button>
               </div>
@@ -90,14 +89,13 @@ export default function TrackApplicants() {
 
       {selectedApplicant && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-[#d9d9d9] p-6 rounded-lg shadow-lg w-full max-w-2xl">
+          <div className="bg-[#d9d9d9] p-6 rounded-lg shadow-lg w-full max-w-2xl max-h-[80vh] overflow-y-auto">
             <h2 className="text-xl font-bold text-[#313131] mb-4">{selectedApplicant.candidate.username}’s Details</h2>
             {analysis ? (
               <div className="mt-4">
                 <h3 className="font-bold text-[#313131]">AI Analysis</h3>
                 <p><strong>Score:</strong> {analysis.score}%</p>
                 <p><strong>Feedback:</strong> {analysis.feedback}</p>
-                <p><strong>Missing Skills:</strong> {analysis.missingSkills?.join(", ") || "None"}</p>
               </div>
             ) : (
               <>
