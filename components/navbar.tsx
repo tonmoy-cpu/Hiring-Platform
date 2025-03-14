@@ -12,9 +12,6 @@ export default function Navbar({ userType = "candidate" }) {
   const [imageError, setImageError] = useState(false);
   const router = useRouter();
 
-  // Log userType to debug
-  console.log("Navbar rendered with userType:", userType);
-
   useEffect(() => {
     const fetchProfile = async () => {
       const token = localStorage.getItem("token");
@@ -25,17 +22,12 @@ export default function Navbar({ userType = "candidate" }) {
           });
           if (!res.ok) throw new Error(`Profile fetch failed with status: ${res.status}`);
           const data = await res.json();
-          console.log("Profile data received:", data);
-          const newProfilePic = data.profilePic || "/uploads/default.jpg";
-          console.log("Setting profilePic to:", newProfilePic);
-          setProfilePic(newProfilePic);
-          setImageError(false);
+          console.log("Navbar profile data:", data);
+          setProfilePic(data.profilePic || "/uploads/default.jpg");
         } catch (err) {
-          console.error("Error fetching profile:", err.message);
+          console.error("Error fetching profile in Navbar:", err.message);
           setProfilePic("/uploads/default.jpg");
         }
-      } else {
-        console.log("No token found, using default profile pic");
       }
     };
     fetchProfile();
@@ -118,7 +110,10 @@ export default function Navbar({ userType = "candidate" }) {
       </div>
 
       <div className="flex-1 flex justify-center space-x-6">
-        <Link href={userType === "recruiter" ? "/recruiter/dashboard" : "/dashboard"} className="nav-link text-white hover:text-gray-300">
+        <Link
+          href={userType === "recruiter" ? "/recruiter/dashboard" : "/dashboard"}
+          className="nav-link text-white hover:text-gray-300"
+        >
           Home
         </Link>
         <Link href="/contact" className="nav-link text-white hover:text-gray-300">

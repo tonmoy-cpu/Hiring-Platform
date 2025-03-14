@@ -11,12 +11,22 @@ export default function Profile() {
   useEffect(() => {
     const fetchProfile = async () => {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/auth/profile", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      setProfile(data);
-      setFormData(data.resumeParsed || {});
+      if (!token) {
+        console.log("No token found");
+        return;
+      }
+      try {
+        const res = await fetch("http://localhost:5000/api/auth/profile", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error(`Failed to fetch profile: ${res.status}`);
+        const data = await res.json();
+        console.log("Profile fetched:", data);
+        setProfile(data);
+        setFormData(data.resumeParsed || {});
+      } catch (err) {
+        console.error("Error fetching profile:", err.message);
+      }
     };
     fetchProfile();
   }, []);
@@ -44,7 +54,7 @@ export default function Profile() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.msg || "Failed to update profile");
-      
+
       setProfile({ ...profile, resumeParsed: formData });
       setEditMode(false);
       showToast("Profile updated successfully!");
@@ -58,7 +68,7 @@ export default function Profile() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#373737]">
-      <Navbar />
+      <Navbar userType={profile.userType} /> {/* Pass userType from profile */}
       <main className="flex-1 p-6">
         <div className="bg-[#313131] p-6 rounded-lg mb-8 shadow-md">
           <h1 className="text-3xl font-semibold text-center uppercase text-white">Profile Details</h1>
