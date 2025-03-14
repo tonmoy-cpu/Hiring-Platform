@@ -4,15 +4,19 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-export default function Home() {
-  const [formData, setFormData] = useState({ email: "", password: "" });
-  const [error, setError] = useState("");
+export default function Login() {
+  const [formData, setFormData] = useState({
+    email: "",
+    password: "",
+  });
   const router = useRouter();
 
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    console.log("Login form data:", formData);
+
     try {
       const res = await fetch("http://localhost:5000/api/auth/login", {
         method: "POST",
@@ -20,14 +24,26 @@ export default function Home() {
         body: JSON.stringify(formData),
       });
       const data = await res.json();
+      console.log("Login response:", data);
+
+      if (!res.ok) throw new Error(data.msg || "Login failed");
       if (data.token) {
         localStorage.setItem("token", data.token);
-        router.push(data.user.userType === "recruiter" ? "/recruiter/dashboard" : "/dashboard");
+        // Fetch user profile to get userType
+        const profileRes = await fetch("http://localhost:5000/api/auth/profile", {
+          headers: { Authorization: `Bearer ${data.token}` },
+        });
+        const user = await profileRes.json();
+        console.log("User profile after login:", user);
+        const redirectPath = user.userType === "recruiter" ? "/recruiter/dashboard" : "/dashboard";
+        console.log("Redirecting to:", redirectPath);
+        router.push(redirectPath);
       } else {
-        setError(data.msg);
+        alert(data.msg);
       }
     } catch (err) {
-      setError("Server error");
+      console.error("Login error:", err);
+      alert("Login failed: " + err.message);
     }
   };
 
@@ -60,9 +76,8 @@ export default function Home() {
               required
             />
           </div>
-          {error && <p className="text-red-500 text-sm">{error}</p>}
           <div className="text-center text-sm mt-4">
-            <Link href="/register" className="text-white hover:underline">New user? Register here</Link>
+            <Link href="/register" className="text-white hover:underline">Not a user? Register</Link>
           </div>
           <div className="flex justify-center mt-8">
             <button type="submit" className="submit-button">Login</button>

@@ -114,22 +114,37 @@ router.post("/register", uploadMiddleware, async (req, res) => {
 });
 
 router.post("/login", async (req, res) => {
-  const { email, password } = req.body;
-  try {
-    const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ msg: "Invalid credentials" });
-
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ msg: "Invalid credentials" });
-
-    const payload = { user: { id: user.id, userType: user.userType } };
-    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: "1h" });
-    res.json({ token });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ msg: "Server error" });
-  }
-});
+    const { email, password } = req.body;
+    console.log("Login attempt:", { email, password }); // Debug input
+  
+    try {
+      console.log("Fetching user from database");
+      const user = await User.findOne({ email });
+      if (!user) {
+        console.log("User not found for email:", email);
+        return res.status(400).json({ msg: "Invalid credentials" });
+      }
+      console.log("User found:", user.email);
+  
+      console.log("Comparing passwords");
+      const isMatch = await bcrypt.compare(password, user.password);
+      if (!isMatch) {
+        console.log("Password mismatch for user:", email);
+        return res.status(400).json({ msg: "Invalid credentials" });
+      }
+      console.log("Password matched");
+  
+      console.log("Generating JWT token");
+      const payload = { user: { id: user.id, userType: user.userType } };
+      const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: "1h" });
+      console.log("Token generated successfully");
+  
+      res.json({ token });
+    } catch (err) {
+      console.error("Error in /login:", err.message, err.stack);
+      res.status(500).json({ msg: "Server error", error: err.message });
+    }
+  });
 
 router.get("/profile", auth, async (req, res) => {
   try {

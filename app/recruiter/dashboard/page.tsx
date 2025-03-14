@@ -5,64 +5,71 @@ import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-export default function Dashboard() {
-  const [appliedJobs, setAppliedJobs] = useState([]);
+export default function RecruiterDashboard() {
+  const [jobs, setJobs] = useState([
+    { id: 1, company: "COMPANY-1", details: "Software Engineer" },
+    { id: 2, company: "COMPANY-2", details: "Product Manager" },
+    { id: 3, company: "COMPANY-3", details: "UX Designer" },
+  ]);
   const router = useRouter();
 
+  // Validate user type on load
   useEffect(() => {
-    const checkFirstLogin = async () => {
+    const validateUser = async () => {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/auth/profile", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const user = await res.json();
-      if (!user.resumeParsed && user.userType === "candidate") {
-        showToast("Please upload your resume to complete your profile!");
-        setTimeout(() => router.push("/resume-extraction"), 3000);
+      if (!token) {
+        console.log("No token found, redirecting to login");
+        router.push("/");
+        return;
+      }
+
+      try {
+        const res = await fetch("http://localhost:5000/api/auth/profile", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const user = await res.json();
+        console.log("User profile:", user);
+        if (user.userType !== "recruiter") {
+          console.log("Not a recruiter, redirecting to candidate dashboard");
+          router.push("/dashboard");
+        }
+      } catch (err) {
+        console.error("Error validating user:", err);
+        router.push("/");
       }
     };
-    checkFirstLogin();
-  }, []);
+    validateUser();
+  }, [router]);
 
-  const handleApply = async (companyId) => {
-    setAppliedJobs((prev) => [...prev, companyId]);
-    alert(`Applied to COMPANY-${companyId}`);
-    // TODO: Replace with API call to /api/applications/apply
+  const handleEdit = (jobId: number) => {
+    // TODO: Replace with navigation to edit page or modal
+    alert(`Editing job for ${jobs.find((j) => j.id === jobId)?.company}`);
   };
 
   return (
     <div className="min-h-screen flex flex-col bg-[#373737]">
-      <Navbar />
+      <Navbar userType="recruiter" />
       <main className="flex-1 p-6">
         <div className="bg-[#313131] p-6 rounded-lg mb-8 shadow-md">
           <h1 className="text-3xl font-semibold text-center uppercase text-white tracking-wide">
-            Get Your Job in One Tap
+            Recruiter Dashboard
           </h1>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {[1, 2, 3].map((company) => (
+          {jobs.map((job) => (
             <div
-              key={company}
+              key={job.id}
               className="job-card p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300"
             >
-              <h3 className="font-semibold text-lg mb-2">COMPANY-{company}</h3>
-              <div className="text-sm text-gray-800">
-                <p>All Details</p>
-                <p>About</p>
-                <p>The Company</p>
-              </div>
+              <h3 className="font-semibold text-lg mb-2">{job.company}</h3>
+              <p className="text-sm">{job.details}</p>
               <div className="mt-4 flex justify-end">
                 <button
-                  onClick={() => handleApply(company)}
-                  disabled={appliedJobs.includes(company)}
-                  className={`text-sm px-4 py-2 rounded-lg transition duration-200 ${
-                    appliedJobs.includes(company)
-                      ? "bg-gray-400 text-white cursor-not-allowed"
-                      : "bg-[#313131] text-white hover:bg-[#4a4a4a]"
-                  }`}
+                  onClick={() => handleEdit(job.id)}
+                  className="bg-[#313131] text-white text-sm px-4 py-2 rounded-lg hover:bg-[#4a4a4a] transition duration-200"
                 >
-                  {appliedJobs.includes(company) ? "Applied" : "Apply"}
+                  Edit
                 </button>
               </div>
             </div>
@@ -70,17 +77,17 @@ export default function Dashboard() {
         </div>
 
         <div className="mt-8 flex flex-wrap justify-around gap-4">
-          <Link href="/resume-extraction">
+          <Link href="/recruiter/post-job">
             <button className="bg-[#313131] text-white p-3 rounded-lg hover:bg-[#4a4a4a] transition duration-200 shadow-md w-48">
-              Resume Extraction
+              Post Job
             </button>
           </Link>
-          <Link href="/track-applications">
+          <Link href="/recruiter/track-applicants">
             <button className="bg-[#313131] text-white p-3 rounded-lg hover:bg-[#4a4a4a] transition duration-200 shadow-md w-48">
-              Track Applications
+              Track Applicants
             </button>
           </Link>
-          <Link href="/analytics">
+          <Link href="/recruiter/analytics">
             <button className="bg-[#313131] text-white p-3 rounded-lg hover:bg-[#4a4a4a] transition duration-200 shadow-md w-48">
               AI Analytics
             </button>
@@ -89,8 +96,4 @@ export default function Dashboard() {
       </main>
     </div>
   );
-}
-
-function showToast(message) {
-  window.dispatchEvent(new CustomEvent("show-toast", { detail: message }));
 }

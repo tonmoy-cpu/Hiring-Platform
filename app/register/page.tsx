@@ -27,7 +27,7 @@ export default function Register() {
     form.append("username", formData.username);
     form.append("email", formData.email);
     form.append("password", formData.password);
-    form.append("userType", userType); // This is the userType sent to backend
+    form.append("userType", userType);
     if (formData.profilePic) form.append("profilePic", formData.profilePic);
     if (userType === "candidate" && formData.resume) form.append("resume", formData.resume);
 
@@ -45,9 +45,9 @@ export default function Register() {
       if (!res.ok) throw new Error(data.msg || "Registration failed");
       if (data.token) {
         localStorage.setItem("token", data.token);
-        // Use the userType from the form submission for redirect
-        console.log("User type before redirect:", userType);
-        const redirectPath = userType === "recruiter" ? "/recruiter/dashboard" : "/dashboard";
+        const submittedUserType = form.get("userType");
+        console.log("Submitted user type from FormData:", submittedUserType);
+        const redirectPath = submittedUserType === "recruiter" ? "/recruiter/dashboard" : "/dashboard";
         console.log("Redirecting to:", redirectPath);
         router.push(redirectPath);
       } else {
