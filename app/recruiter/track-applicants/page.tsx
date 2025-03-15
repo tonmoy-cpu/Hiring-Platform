@@ -8,6 +8,7 @@ export default function TrackApplicants() {
   const [applications, setApplications] = useState([]);
   const [selectedApplicant, setSelectedApplicant] = useState(null);
   const [analysis, setAnalysis] = useState(null);
+  const [statusUpdates, setStatusUpdates] = useState({});
 
   useEffect(() => {
     const fetchApplications = async () => {
@@ -19,6 +20,7 @@ export default function TrackApplicants() {
         });
         if (!res.ok) throw new Error("Failed to fetch applications");
         const data = await res.json();
+        console.log("Fetched applications:", data); // Confirm "Not Selected" is excluded
         setApplications(data);
       } catch (err) {
         console.error("Error fetching applications:", err);
@@ -26,6 +28,49 @@ export default function TrackApplicants() {
     };
     fetchApplications();
   }, []);
+
+  const handleStatusChange = (appId, value) => {
+    setStatusUpdates((prev) => ({ ...prev, [appId]: value }));
+  };
+
+  const handleSubmitStatus = async (appId) => {
+    const token = localStorage.getItem("token");
+    const newStatus = statusUpdates[appId] || applications.find((a) => a._id === appId).status;
+
+    try {
+      const res = await fetch(`http://localhost:5000/api/applications/${appId}/status`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (!res.ok) {
+        let errorData;
+        try {
+          errorData = await res.json();
+          throw new Error(errorData.msg || `Failed to update status (Status: ${res.status})`);
+        } catch (jsonErr) {
+          throw new Error(`Server error: ${res.statusText} (Status: ${res.status})`);
+        }
+      }
+
+      const data = await res.json();
+      if (newStatus === "Not Selected") {
+        setApplications((prev) => prev.filter((app) => app._id !== appId));
+      } else {
+        setApplications((prev) =>
+          prev.map((app) => (app._id === appId ? { ...app, status: newStatus } : app))
+        );
+      }
+      showToast("Status updated successfully!");
+    } catch (err) {
+      console.error("Error updating status:", err);
+      alert(`Error: ${err.message}`);
+    }
+  };
 
   const handleChat = (app) => {
     alert(`Chat with ${app.candidate.username} coming soon!`);
@@ -76,12 +121,11 @@ export default function TrackApplicants() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `resume-${userId}.pdf`; // Customize filename as needed
+      a.download = `resume-${userId}.pdf`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
-      console.log("Resume downloaded for user:", userId);
     } catch (err) {
       console.error("Download error:", err);
       alert("Error: " + err.message);
@@ -97,21 +141,42 @@ export default function TrackApplicants() {
         </div>
         <div className="space-y-6">
           {applications.map((app) => (
-            <div key={app._id} className="bg-[#d9d9d9] p-4 rounded-lg flex items-center shadow-md">
-              <CircleUser className="h-10 w-10 text-[#313131] mr-4" />
-              <div className="flex-1 text-[#313131]">
-                <p className="font-bold text-lg">{app.candidate.username}</p>
-                <p className="text-sm">{app.job.title}</p>
+            <div key={app._id} className="bg-[#d9d9d9] p-4 rounded-lg shadow-md">
+              <div className="flex items-center">
+                <CircleUser className="h-10 w-10 text-[#313131] mr-4" />
+                <div className="flex-1 text-[#313131]">
+                  <p className="font-bold text-lg">{app.candidate.username}</p>
+                  <p className="text-sm">{app.job.title}</p>
+                  <p className="text-xs">Current Status: {app.status}</p>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button onClick={() => handleChat(app)} className="p-2 rounded-full bg-[#313131] hover:bg-[#4a4a4a] transition" title="Chat">
+                    <MessageSquare className="h-5 w-5 text-white" />
+                  </button>
+                  <button onClick={() => handleAnalyze(app)} className="p-2 rounded-full bg-[#313131] hover:bg-[#4a4a4a] transition" title="Analyze with AI">
+                    <MoreHorizontal className="h-5 w-5 text-white" />
+                  </button>
+                  <button onClick={() => handleDetails(app)} className="p-2 rounded-full bg-[#313131] hover:bg-[#4a4a4a] transition" title="Details">
+                    <FileText className="h-5 w-5 text-white" />
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center space-x-2">
-                <button onClick={() => handleChat(app)} className="p-2 rounded-full bg-[#313131] hover:bg-[#4a4a4a] transition" title="Chat">
-                  <MessageSquare className="h-5 w-5 text-white" />
-                </button>
-                <button onClick={() => handleAnalyze(app)} className="p-2 rounded-full bg-[#313131] hover:bg-[#4a4a4a] transition" title="Analyze with AI">
-                  <MoreHorizontal className="h-5 w-5 text-white" />
-                </button>
-                <button onClick={() => handleDetails(app)} className="p-2 rounded-full bg-[#313131] hover:bg-[#4a4a4a] transition" title="Details">
-                  <FileText className="h-5 w-5 text-white" />
+              <div className="mt-4">
+                <select
+                  value={statusUpdates[app._id] || app.status}
+                  onChange={(e) => handleStatusChange(app._id, e.target.value)}
+                  className="w-full p-2 mb-2 border rounded text-[#313131]"
+                >
+                  <option value="Applied">Applied</option>
+                  <option value="Under Review">Under Review</option>
+                  <option value="Selected">Selected</option>
+                  <option value="Not Selected">Not Selected</option>
+                </select>
+                <button
+                  onClick={() => handleSubmitStatus(app._id)}
+                  className="w-full bg-[#313131] text-white py-2 rounded hover:bg-[#4a4a4a] transition"
+                >
+                  Submit
                 </button>
               </div>
             </div>
@@ -193,4 +258,8 @@ export default function TrackApplicants() {
       )}
     </div>
   );
+}
+
+function showToast(message) {
+  window.dispatchEvent(new CustomEvent("show-toast", { detail: message }));
 }

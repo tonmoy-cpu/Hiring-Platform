@@ -53,7 +53,7 @@ export default function Navbar({ userType = "candidate" }) {
 
   const menuOptions = userType === "recruiter"
     ? [
-        { label: "Dashboard", href: "/recruiter/dashboard" },
+        { label: "Dashboard", href: "/recruiter/dashboard" }, // Updated to match new dashboard
         { label: "Post Job", href: "/recruiter/post-job" },
         { label: "Track Applicants", href: "/recruiter/track-applicants" },
         { label: "Contact", href: "/contact" },

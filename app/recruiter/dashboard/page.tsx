@@ -1,49 +1,96 @@
 "use client";
 
 import Navbar from "@/components/navbar";
-import Link from "next/link";
+import { FileText, Edit, X } from "lucide-react";
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 
 export default function RecruiterDashboard() {
-  const [jobs, setJobs] = useState([
-    { id: 1, company: "COMPANY-1", details: "Software Engineer" },
-    { id: 2, company: "COMPANY-2", details: "Product Manager" },
-    { id: 3, company: "COMPANY-3", details: "UX Designer" },
-  ]);
-  const router = useRouter();
+  const [jobs, setJobs] = useState([]);
+  const [editingJob, setEditingJob] = useState(null);
+  const [formData, setFormData] = useState({ title: "", details: "", skills: "" });
 
-  // Validate user type on load
   useEffect(() => {
-    const validateUser = async () => {
+    const fetchJobs = async () => {
       const token = localStorage.getItem("token");
-      if (!token) {
-        console.log("No token found, redirecting to login");
-        router.push("/");
-        return;
-      }
-
+      if (!token) return;
       try {
-        const res = await fetch("http://localhost:5000/api/auth/profile", {
+        const res = await fetch("http://localhost:5000/api/jobs/recruiter", {
           headers: { Authorization: `Bearer ${token}` },
         });
-        const user = await res.json();
-        console.log("User profile:", user);
-        if (user.userType !== "recruiter") {
-          console.log("Not a recruiter, redirecting to candidate dashboard");
-          router.push("/dashboard");
-        }
+        if (!res.ok) throw new Error("Failed to fetch jobs");
+        const data = await res.json();
+        setJobs(data);
       } catch (err) {
-        console.error("Error validating user:", err);
-        router.push("/");
+        console.error("Error fetching jobs:", err);
+        alert("Error: " + err.message);
       }
     };
-    validateUser();
-  }, [router]);
+    fetchJobs();
+  }, []);
 
-  const handleEdit = (jobId: number) => {
-    // TODO: Replace with navigation to edit page or modal
-    alert(`Editing job for ${jobs.find((j) => j.id === jobId)?.company}`);
+  const handleEdit = (job) => {
+    setEditingJob(job._id);
+    setFormData({
+      title: job.title,
+      details: job.details,
+      skills: job.skills.join(", "),
+    });
+  };
+
+  const handleClose = async (jobId) => {
+    const token = localStorage.getItem("token");
+    if (!confirm("Are you sure you want to close this job?")) return;
+
+    try {
+      const res = await fetch(`http://localhost:5000/api/jobs/${jobId}/close`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.msg || "Failed to close job");
+      }
+      setJobs((prev) => prev.filter((job) => job._id !== jobId));
+      showToast("Job closed successfully!");
+    } catch (err) {
+      console.error("Error closing job:", err);
+      alert(`Error: ${err.message}`);
+    }
+  };
+
+  const handleSaveEdit = async (jobId) => {
+    const token = localStorage.getItem("token");
+    try {
+      const skillsArray = formData.skills.split(",").map((s) => s.trim());
+      const res = await fetch(`http://localhost:5000/api/jobs/${jobId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ ...formData, skills: skillsArray }),
+      });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.msg || "Failed to update job");
+      }
+      const updatedJob = await res.json();
+      setJobs((prev) =>
+        prev.map((job) => (job._id === jobId ? updatedJob : job))
+      );
+      setEditingJob(null);
+      showToast("Job updated successfully!");
+    } catch (err) {
+      console.error("Error updating job:", err);
+      alert(`Error: ${err.message}`);
+    }
+  };
+
+  const handleChange = (e) => {
+    setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
   return (
@@ -51,49 +98,100 @@ export default function RecruiterDashboard() {
       <Navbar userType="recruiter" />
       <main className="flex-1 p-6">
         <div className="bg-[#313131] p-6 rounded-lg mb-8 shadow-md">
-          <h1 className="text-3xl font-semibold text-center uppercase text-white tracking-wide">
-            Recruiter Dashboard
-          </h1>
+          <h1 className="text-3xl font-semibold text-center uppercase text-white">Recruiter Dashboard</h1>
         </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {jobs.map((job) => (
-            <div
-              key={job.id}
-              className="job-card p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300"
-            >
-              <h3 className="font-semibold text-lg mb-2">{job.company}</h3>
-              <p className="text-sm">{job.details}</p>
-              <div className="mt-4 flex justify-end">
-                <button
-                  onClick={() => handleEdit(job.id)}
-                  className="bg-[#313131] text-white text-sm px-4 py-2 rounded-lg hover:bg-[#4a4a4a] transition duration-200"
-                >
-                  Edit
-                </button>
+        <div className="space-y-6">
+          {jobs.length > 0 ? (
+            jobs.map((job) => (
+              <div key={job._id} className="bg-[#d9d9d9] p-4 rounded-lg shadow-md">
+                {editingJob === job._id ? (
+                  <div>
+                    <input
+                      type="text"
+                      name="title"
+                      value={formData.title}
+                      onChange={handleChange}
+                      className="w-full p-2 mb-2 border rounded text-[#313131]"
+                      placeholder="Job Title"
+                    />
+                    <textarea
+                      name="details"
+                      value={formData.details}
+                      onChange={handleChange}
+                      className="w-full p-2 mb-2 border rounded text-[#313131]"
+                      placeholder="Job Details"
+                    />
+                    <input
+                      type="text"
+                      name="skills"
+                      value={formData.skills}
+                      onChange={handleChange}
+                      className="w-full p-2 mb-2 border rounded text-[#313131]"
+                      placeholder="Skills (comma-separated)"
+                    />
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => handleSaveEdit(job._id)}
+                        className="flex-1 bg-[#313131] text-white py-2 rounded hover:bg-[#4a4a4a] transition"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={() => setEditingJob(null)}
+                        className="flex-1 bg-[#313131] text-white py-2 rounded hover:bg-[#4a4a4a] transition"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex items-center">
+                      <FileText className="h-10 w-10 text-[#313131] mr-4" />
+                      <div className="flex-1 text-[#313131]">
+                        <p className="font-bold text-lg">{job.title}</p>
+                        <p className="text-sm">{job.details}</p>
+                        <p className="text-xs mt-1">
+                          <strong>Skills:</strong> {job.skills.join(", ")}
+                        </p>
+                        <p className="text-xs mt-1">
+                          <strong>Status:</strong> {job.isClosed ? "Closed" : "Open"}
+                        </p>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        {!job.isClosed && (
+                          <>
+                            <button
+                              onClick={() => handleEdit(job)}
+                              className="p-2 rounded-full bg-[#313131] hover:bg-[#4a4a4a] transition"
+                              title="Edit Job"
+                            >
+                              <Edit className="h-5 w-5 text-white" />
+                            </button>
+                            <button
+                              onClick={() => handleClose(job._id)}
+                              className="p-2 rounded-full bg-[#313131] hover:bg-[#4a4a4a] transition"
+                              title="Close Job"
+                            >
+                              <X className="h-5 w-5 text-white" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-8 flex flex-wrap justify-around gap-4">
-          <Link href="/recruiter/post-job">
-            <button className="bg-[#313131] text-white p-3 rounded-lg hover:bg-[#4a4a4a] transition duration-200 shadow-md w-48">
-              Post Job
-            </button>
-          </Link>
-          <Link href="/recruiter/track-applicants">
-            <button className="bg-[#313131] text-white p-3 rounded-lg hover:bg-[#4a4a4a] transition duration-200 shadow-md w-48">
-              Track Applicants
-            </button>
-          </Link>
-          <Link href="/recruiter/analytics">
-            <button className="bg-[#313131] text-white p-3 rounded-lg hover:bg-[#4a4a4a] transition duration-200 shadow-md w-48">
-              AI Analytics
-            </button>
-          </Link>
+            ))
+          ) : (
+            <p className="text-center text-white">No jobs posted yet.</p>
+          )}
         </div>
       </main>
     </div>
   );
+}
+
+function showToast(message) {
+  window.dispatchEvent(new CustomEvent("show-toast", { detail: message }));
 }
