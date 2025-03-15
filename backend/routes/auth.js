@@ -97,7 +97,6 @@ router.post("/register", uploadMiddleware, async (req, res) => {
         await fs.unlink(pdfPath);
       } catch (resumeErr) {
         console.error("Resume processing error:", resumeErr.message);
-        // Continue even if resume fails, user is already saved
       }
     }
 
@@ -153,7 +152,6 @@ router.get("/profile", auth, async (req, res) => {
       console.log("User not found for ID:", req.user.id);
       return res.status(404).json({ msg: "User not found" });
     }
-    // Ensure profilePic is always a valid string
     user.profilePic = user.profilePic || "/uploads/default.jpg";
     console.log("Returning profile:", { username: user.username, profilePic: user.profilePic });
     res.json(user);
@@ -172,12 +170,29 @@ router.put("/profile", auth, async (req, res) => {
     user.resumeParsed = resumeParsed || user.resumeParsed;
     await user.save();
 
-    // Ensure profilePic is included in response
     user.profilePic = user.profilePic || "/uploads/default.jpg";
     res.json(user);
   } catch (err) {
     console.error("Error in PUT /profile:", err.message, err.stack);
     res.status(500).json({ msg: "Server error", error: err.message });
+  }
+});
+
+router.put("/preferences", auth, async (req, res) => {
+  if (req.user.userType !== "candidate") return res.status(403).json({ msg: "Not authorized" });
+
+  const { preferredSkills, preferredDomains } = req.body;
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ msg: "User not found" });
+
+    user.preferredSkills = preferredSkills || user.preferredSkills;
+    user.preferredDomains = preferredDomains || user.preferredDomains;
+    await user.save();
+    res.json(user);
+  } catch (err) {
+    console.error("Error in /preferences:", err);
+    res.status(500).json({ msg: "Server error" });
   }
 });
 

@@ -14,6 +14,8 @@ const userSchema = new mongoose.Schema({
   },
   resumeFile: { type: String }, // Path to stored resume file
   company: { type: String }, // Recruiter field
+  preferredSkills: { type: [String], default: [] }, // New field
+  preferredDomains: { type: [String], default: [] }, // New field
   createdAt: { type: Date, default: Date.now },
 });
 

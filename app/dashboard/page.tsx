@@ -1,24 +1,49 @@
 "use client";
 
 import Navbar from "@/components/navbar";
-import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import toast from "react-hot-toast";
 
 export default function Dashboard() {
   const [jobs, setJobs] = useState([]);
   const [appliedJobs, setAppliedJobs] = useState([]);
   const [userSkills, setUserSkills] = useState([]);
+  const [preferredSkills, setPreferredSkills] = useState([]);
+  const [preferredDomains, setPreferredDomains] = useState([]);
   const [hoveredJob, setHoveredJob] = useState(null);
   const [showApplyModal, setShowApplyModal] = useState(null);
+  const [showPreferencesPopup, setShowPreferencesPopup] = useState(false);
   const [resumeFile, setResumeFile] = useState(null);
   const [coverLetter, setCoverLetter] = useState("");
+  const [hasPreferences, setHasPreferences] = useState(false);
   const router = useRouter();
+
+  const skillOptions = [
+    "Node.js", "React.js", "React Native", "Figma", "Next.js", "JavaScript", "TypeScript",
+    "Python", "Django", "Flask", "Java", "Spring", "C#", ".NET", "C++", "Go", "Ruby",
+    "Rails", "PHP", "Laravel", "Angular", "Vue.js", "Svelte", "HTML", "CSS", "Tailwind CSS",
+    "Bootstrap", "SQL", "MongoDB", "PostgreSQL", "MySQL", "Redis", "GraphQL", "REST API",
+    "AWS", "Azure", "Google Cloud", "Docker", "Kubernetes", "Jenkins", "Git", "CI/CD",
+    "Machine Learning", "TensorFlow", "PyTorch", "Data Analysis", "Pandas", "NumPy",
+    "UI/UX Design", "Adobe XD", "Sketch", "Blockchain", "Solidity", "Cybersecurity",
+  ];
+
+  const domainOptions = [
+    "Web Developer", "Frontend Developer", "Backend Developer", "Full Stack Developer",
+    "Mobile Developer", "UI/UX Designer", "Business Analyst", "Data Analyst", "Data Scientist",
+    "Machine Learning Engineer", "DevOps Engineer", "Cloud Architect", "Software Engineer",
+    "Systems Analyst", "Database Administrator", "Network Engineer", "Cybersecurity Analyst",
+    "Product Manager", "Project Manager", "QA Engineer", "Game Developer", "Blockchain Developer",
+    "AI Engineer", "Embedded Systems Engineer", "Robotics Engineer", "Graphic Designer",
+  ];
 
   useEffect(() => {
     const fetchData = async () => {
       const token = localStorage.getItem("token");
+      console.log("Token retrieved:", token);
       if (!token) {
+        console.log("No token found, redirecting to login");
         router.push("/");
         return;
       }
@@ -29,21 +54,63 @@ export default function Dashboard() {
           fetch("http://localhost:5000/api/applications", { headers: { Authorization: `Bearer ${token}` } }),
         ]);
 
-        if (!profileRes.ok || !jobsRes.ok || !appsRes.ok) throw new Error("Failed to fetch data");
+        if (!profileRes.ok) {
+          const errorText = await profileRes.text();
+          throw new Error(`Profile fetch failed with status: ${profileRes.status} - ${errorText}`);
+        }
+        if (!jobsRes.ok) {
+          const errorText = await jobsRes.text();
+          throw new Error(`Jobs fetch failed with status: ${jobsRes.status} - ${errorText}`);
+        }
+        if (!appsRes.ok) {
+          const errorText = await appsRes.text();
+          throw new Error(`Applications fetch failed with status: ${appsRes.status} - ${errorText}`);
+        }
 
         const profile = await profileRes.json();
         const jobsData = await jobsRes.json();
         const appsData = await appsRes.json();
 
-        console.log("Fetched profile:", profile);
-        console.log("Fetched jobs:", jobsData);
-        console.log("Fetched applications:", appsData);
-
         setUserSkills(profile.resumeParsed?.skills || []);
+        setPreferredSkills(profile.preferredSkills || []);
+        setPreferredDomains(profile.preferredDomains || []);
+        setHasPreferences(profile.preferredSkills?.length > 0 || profile.preferredDomains?.length > 0);
         setJobs(jobsData);
         setAppliedJobs(appsData.map(app => app.job._id));
+
+        // Show preferences popup every login if no preferences are set
+        if (!profile.preferredSkills?.length && !profile.preferredDomains?.length) {
+          toast.custom((t) => (
+            <div
+              className="bg-[#313131] text-white p-4 rounded-lg shadow-lg flex items-center justify-between max-w-md"
+              style={{ borderRadius: "8px" }}
+            >
+              <span>Please add your preferred skills and domains to see relevant jobs!</span>
+              <button
+                onClick={() => {
+                  console.log("Add Now clicked"); // Debug
+                  setShowPreferencesPopup(true);
+                  toast.dismiss(t.id); // Dismiss the toast after clicking
+                }}
+                className="bg-[#4a4a4a] text-white px-3 py-1 rounded-lg hover:bg-[#5a5a5a] transition ml-4"
+              >
+                Add Now
+              </button>
+            </div>
+          ), {
+            duration: 5000,
+            position: "top-right",
+          });
+        }
       } catch (err) {
         console.error("Error fetching data:", err);
+        if (err.message.includes("401")) {
+          toast.error("Session expired or invalid token. Please log in again.");
+          localStorage.removeItem("token");
+          router.push("/");
+        } else {
+          toast.error("Failed to load dashboard data: " + err.message);
+        }
       }
     };
     fetchData();
@@ -53,6 +120,60 @@ export default function Dashboard() {
     return job.skills.filter(skill => !userSkills.includes(skill));
   };
 
+  const handleSkillChange = (skill) => {
+    setPreferredSkills((prev) =>
+      prev.includes(skill) ? prev.filter((s) => s !== skill) : [...prev, skill]
+    );
+  };
+
+  const handleDomainChange = (domain) => {
+    setPreferredDomains((prev) =>
+      prev.includes(domain) ? prev.filter((d) => d !== domain) : [...prev, domain]
+    );
+  };
+
+  const savePreferences = async () => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      router.push("/");
+      return;
+    }
+    try {
+      const res = await fetch("http://localhost:5000/api/auth/preferences", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ preferredSkills, preferredDomains }),
+      });
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(`Failed to save preferences with status: ${res.status} - ${errorText}`);
+      }
+      setHasPreferences(true);
+      setShowPreferencesPopup(false);
+      const jobsRes = await fetch("http://localhost:5000/api/jobs", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!jobsRes.ok) {
+        const errorText = await jobsRes.text();
+        throw new Error(`Jobs refresh failed with status: ${jobsRes.status} - ${errorText}`);
+      }
+      setJobs(await jobsRes.json());
+      toast.success("Preferences saved successfully!");
+    } catch (err) {
+      console.error("Error saving preferences:", err);
+      if (err.message.includes("401")) {
+        toast.error("Session expired or invalid token. Please log in again.");
+        localStorage.removeItem("token");
+        router.push("/");
+      } else {
+        toast.error("Error saving preferences: " + err.message);
+      }
+    }
+  };
+
   const handleApply = async (jobId) => {
     if (!resumeFile || !coverLetter) {
       alert("Please upload a resume and write a cover letter.");
@@ -60,6 +181,10 @@ export default function Dashboard() {
     }
 
     const token = localStorage.getItem("token");
+    if (!token) {
+      router.push("/");
+      return;
+    }
     const formData = new FormData();
     formData.append("resume", resumeFile);
 
@@ -69,7 +194,10 @@ export default function Dashboard() {
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
-      if (!extractRes.ok) throw new Error("Resume extraction failed");
+      if (!extractRes.ok) {
+        const errorText = await extractRes.text();
+        throw new Error(`Resume extraction failed with status: ${extractRes.status} - ${errorText}`);
+      }
       const { resumeText } = await extractRes.json();
 
       const applyRes = await fetch("http://localhost:5000/api/applications/apply", {
@@ -80,15 +208,24 @@ export default function Dashboard() {
         },
         body: JSON.stringify({ jobId, resumeText, coverLetter }),
       });
-      if (!applyRes.ok) throw new Error("Application submission failed");
+      if (!applyRes.ok) {
+        const errorText = await applyRes.text();
+        throw new Error(`Application submission failed with status: ${applyRes.status} - ${errorText}`);
+      }
       setAppliedJobs((prev) => [...prev, jobId]);
       setShowApplyModal(null);
       setResumeFile(null);
       setCoverLetter("");
-      alert("Application submitted successfully!");
+      toast.success("Application submitted successfully!");
     } catch (err) {
       console.error("Error applying:", err);
-      alert("Error: " + err.message);
+      if (err.message.includes("401")) {
+        toast.error("Session expired or invalid token. Please log in again.");
+        localStorage.removeItem("token");
+        router.push("/");
+      } else {
+        toast.error("Error applying: " + err.message);
+      }
     }
   };
 
@@ -102,7 +239,7 @@ export default function Dashboard() {
           </h1>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
           {jobs.map((job) => (
             <div
               key={job._id}
@@ -117,15 +254,15 @@ export default function Dashboard() {
               </div>
               <div className="mt-4 flex justify-end">
                 <button
-                  onClick={() => setShowApplyModal(job)}
-                  disabled={appliedJobs.includes(job._id)}
+                  onClick={() => job.isApplied ? null : setShowApplyModal(job)}
+                  disabled={job.isApplied}
                   className={`text-sm px-4 py-2 rounded-lg transition duration-200 ${
-                    appliedJobs.includes(job._id)
+                    job.isApplied
                       ? "bg-gray-400 text-white cursor-not-allowed"
                       : "bg-[#313131] text-white hover:bg-[#4a4a4a]"
                   }`}
                 >
-                  {appliedJobs.includes(job._id) ? "Applied" : "Apply"}
+                  {job.isApplied ? "Applied" : "Apply"}
                 </button>
               </div>
               {hoveredJob === job && (
@@ -187,10 +324,64 @@ export default function Dashboard() {
           </div>
         )}
 
+        {showPreferencesPopup && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-[#d9d9d9] p-6 rounded-lg shadow-lg w-full max-w-md max-h-[80vh] overflow-y-auto">
+              <h2 className="text-xl font-bold text-[#313131] mb-4">Set Your Preferences</h2>
+              <div className="mb-4">
+                <h3 className="font-bold text-[#313131] mb-2">Skills</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  {skillOptions.map((skill) => (
+                    <label key={skill} className="flex items-center text-[#313131]">
+                      <input
+                        type="checkbox"
+                        checked={preferredSkills.includes(skill)}
+                        onChange={() => handleSkillChange(skill)}
+                        className="mr-2"
+                      />
+                      {skill}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="mb-4">
+                <h3 className="font-bold text-[#313131] mb-2">Domains</h3>
+                <div className="grid grid-cols-1 gap-2">
+                  {domainOptions.map((domain) => (
+                    <label key={domain} className="flex items-center text-[#313131]">
+                      <input
+                        type="checkbox"
+                        checked={preferredDomains.includes(domain)}
+                        onChange={() => handleDomainChange(domain)}
+                        className="mr-2"
+                      />
+                      {domain}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="flex justify-between space-x-4">
+                <button
+                  onClick={savePreferences}
+                  className="bg-[#313131] text-white px-6 py-2 rounded-lg hover:bg-[#4a4a4a] transition w-full"
+                >
+                  Save Preferences
+                </button>
+                <button
+                  onClick={() => setShowPreferencesPopup(false)}
+                  className="bg-gray-400 text-white px-6 py-2 rounded-lg hover:bg-gray-500 transition w-full"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="mt-8 flex flex-wrap justify-around gap-4">
-          <Link href="/resume-extraction"><button className="bg-[#313131] text-white p-3 rounded-lg hover:bg-[#4a4a4a] transition duration-200 shadow-md w-48">Resume Extraction</button></Link>
-          <Link href="/track-applications"><button className="bg-[#313131] text-white p-3 rounded-lg hover:bg-[#4a4a4a] transition duration-200 shadow-md w-48">Track Applications</button></Link>
-          <Link href="/analytics"><button className="bg-[#313131] text-white p-3 rounded-lg hover:bg-[#4a4a4a] transition duration-200 shadow-md w-48">AI Analytics</button></Link>
+          <a href="/resume-extraction"><button className="bg-[#313131] text-white p-3 rounded-lg hover:bg-[#4a4a4a] transition duration-200 shadow-md w-48">Resume Extraction</button></a>
+          <a href="/track-applications"><button className="bg-[#313131] text-white p-3 rounded-lg hover:bg-[#4a4a4a] transition duration-200 shadow-md w-48">Track Applications</button></a>
+          <a href="/analytics"><button className="bg-[#313131] text-white p-3 rounded-lg hover:bg-[#4a4a4a] transition duration-200 shadow-md w-48">AI Analytics</button></a>
         </div>
       </main>
     </div>

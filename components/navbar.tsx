@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Menu } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import toast from "react-hot-toast";
 
 export default function Navbar({ userType = "candidate" }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -15,23 +16,38 @@ export default function Navbar({ userType = "candidate" }) {
   useEffect(() => {
     const fetchProfile = async () => {
       const token = localStorage.getItem("token");
-      if (token) {
-        try {
-          const res = await fetch("http://localhost:5000/api/auth/profile", {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (!res.ok) throw new Error(`Profile fetch failed with status: ${res.status}`);
-          const data = await res.json();
-          console.log("Navbar profile data:", data);
-          setProfilePic(data.profilePic || "/uploads/default.jpg");
-        } catch (err) {
-          console.error("Error fetching profile in Navbar:", err.message);
+      console.log("Navbar token retrieved:", token); // Debug
+      if (!token) {
+        console.log("No token found in Navbar, redirecting to login");
+        router.push("/");
+        return;
+      }
+
+      try {
+        const res = await fetch("http://localhost:5000/api/auth/profile", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(`Profile fetch failed with status: ${res.status} - ${errorText}`);
+        }
+        const data = await res.json();
+        console.log("Navbar profile data:", data);
+        setProfilePic(data.profilePic || "/uploads/default.jpg");
+      } catch (err) {
+        console.error("Error fetching profile in Navbar:", err.message);
+        if (err.message.includes("401")) {
+          toast.error("Session expired or invalid token. Please log in again.");
+          localStorage.removeItem("token");
+          router.push("/");
+        } else {
           setProfilePic("/uploads/default.jpg");
+          toast.error("Failed to load profile picture.");
         }
       }
     };
     fetchProfile();
-  }, []);
+  }, [router]);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -53,7 +69,7 @@ export default function Navbar({ userType = "candidate" }) {
 
   const menuOptions = userType === "recruiter"
     ? [
-        { label: "Dashboard", href: "/recruiter/dashboard" }, // Updated to match new dashboard
+        { label: "Dashboard", href: "/dashboard/recruiter" },
         { label: "Post Job", href: "/recruiter/post-job" },
         { label: "Track Applicants", href: "/recruiter/track-applicants" },
         { label: "Contact", href: "/contact" },
@@ -111,7 +127,7 @@ export default function Navbar({ userType = "candidate" }) {
 
       <div className="flex-1 flex justify-center space-x-6">
         <Link
-          href={userType === "recruiter" ? "/recruiter/dashboard" : "/dashboard"}
+          href={userType === "recruiter" ? "/dashboard/recruiter" : "/dashboard"}
           className="nav-link text-white hover:text-gray-300"
         >
           Home
