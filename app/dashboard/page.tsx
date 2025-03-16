@@ -4,7 +4,7 @@ import Navbar from "@/components/navbar";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import { skillOptions, domainOptions } from "@/lib/utils";
+import { skillOptions, domainOptions } from "@/lib/utils"; // Import centralized lists
 
 export default function Dashboard() {
   const [jobs, setJobs] = useState([]);
@@ -18,67 +18,88 @@ export default function Dashboard() {
   const [resumeFile, setResumeFile] = useState(null);
   const [coverLetter, setCoverLetter] = useState("");
   const [hasPreferences, setHasPreferences] = useState(false);
+  const [toastShown, setToastShown] = useState(false); // Prevent repeated toasts
   const router = useRouter();
 
-  const fetchData = async () => {
-    const token = localStorage.getItem("token");
-    console.log("Token retrieved:", token);
-    if (!token) {
-      console.log("No token found, redirecting to login");
-      router.push("/");
-      return;
-    }
-    try {
-      const [profileRes, jobsRes, appsRes] = await Promise.all([
-        fetch("http://localhost:5000/api/auth/profile", {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch("http://localhost:5000/api/jobs", {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch("http://localhost:5000/api/applications", {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-      ]);
-
-      if (!profileRes.ok) {
-        const errorText = await profileRes.text();
-        throw new Error(`Profile fetch failed with status: ${profileRes.status} - ${errorText}`);
-      }
-      if (!jobsRes.ok) {
-        const errorText = await jobsRes.text();
-        throw new Error(`Jobs fetch failed with status: ${jobsRes.status} - ${errorText}`);
-      }
-      if (!appsRes.ok) {
-        const errorText = await appsRes.text();
-        throw new Error(`Applications fetch failed with status: ${appsRes.status} - ${errorText}`);
-      }
-
-      const profile = await profileRes.json();
-      const jobsData = await jobsRes.json();
-      const appsData = await appsRes.json();
-
-      setUserSkills(profile.resumeParsed?.skills || []);
-      setPreferredSkills(profile.preferredSkills || []);
-      setPreferredDomains(profile.preferredDomains || []);
-      setHasPreferences(profile.preferredSkills?.length > 0 || profile.preferredDomains?.length > 0);
-      setJobs(jobsData);
-      setAppliedJobs(appsData.map((app) => app.job._id));
-    } catch (err) {
-      console.error("Error fetching data:", err);
-      if (err.message.includes("401")) {
-        toast.error("Session expired or invalid token. Please log in again.");
-        localStorage.removeItem("token");
-        router.push("/");
-      } else {
-        toast.error("Failed to load dashboard data: " + err.message);
-      }
-    }
-  };
-
   useEffect(() => {
+    const fetchData = async () => {
+      const token = localStorage.getItem("token");
+      console.log("Token retrieved:", token);
+      if (!token) {
+        console.log("No token found, redirecting to login");
+        router.push("/");
+        return;
+      }
+      try {
+        const [profileRes, jobsRes, appsRes] = await Promise.all([
+          fetch("http://localhost:5000/api/auth/profile", {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch("http://localhost:5000/api/jobs", {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch("http://localhost:5000/api/applications", {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ]);
+
+        if (!profileRes.ok) throw new Error(`Profile fetch failed with status: ${profileRes.status}`);
+        if (!jobsRes.ok) throw new Error(`Jobs fetch failed with status: ${jobsRes.status}`);
+        if (!appsRes.ok) throw new Error(`Applications fetch failed with status: ${appsRes.status}`);
+
+        const profile = await profileRes.json();
+        const jobsData = await jobsRes.json();
+        const appsData = await appsRes.json();
+
+        setUserSkills(profile.resumeParsed?.skills || []);
+        setPreferredSkills(profile.preferredSkills || []);
+        setPreferredDomains(profile.preferredDomains || []);
+        setHasPreferences(profile.preferredSkills?.length > 0 || profile.preferredDomains?.length > 0);
+        setJobs(jobsData);
+        setAppliedJobs(appsData.map((app) => app.job._id));
+
+        // Show preferences popup every login if no preferences are set
+        if (!profile.preferredSkills?.length && !profile.preferredDomains?.length && !toastShown) {
+          console.log("Triggering preferences toast");
+          toast.custom(
+            (t) => (
+              <div
+                className="bg-[#313131] text-white p-4 rounded-lg shadow-lg flex items-center justify-between max-w-md"
+                style={{ borderRadius: "8px" }}
+              >
+                <span>Please add your preferred skills and domains to see relevant jobs!</span>
+                <button
+                  onClick={() => {
+                    console.log("Add Now clicked");
+                    setShowPreferencesPopup(true);
+                    toast.dismiss(t.id);
+                  }}
+                  className="bg-[#4a4a4a] text-white px-3 py-1 rounded-lg hover:bg-[#5a5a5a] transition ml-4"
+                >
+                  Add Now
+                </button>
+              </div>
+            ),
+            {
+              duration: 5000,
+              position: "top-right",
+            }
+          );
+          setToastShown(true);
+        }
+      } catch (err) {
+        console.error("Error fetching data:", err);
+        if (err.message.includes("401")) {
+          toast.error("Session expired or invalid token. Please log in again.");
+          localStorage.removeItem("token");
+          router.push("/");
+        } else {
+          toast.error("Failed to load dashboard data: " + err.message);
+        }
+      }
+    };
     fetchData();
-  }, [router]);
+  }, [router, toastShown]);
 
   const getMissingSkills = (job) => {
     return job.skills.filter((skill) => !userSkills.includes(skill));
@@ -111,19 +132,13 @@ export default function Dashboard() {
         },
         body: JSON.stringify({ preferredSkills, preferredDomains }),
       });
-      if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(`Failed to save preferences with status: ${res.status} - ${errorText}`);
-      }
+      if (!res.ok) throw new Error(`Failed to save preferences with status: ${res.status}`);
       setHasPreferences(true);
       setShowPreferencesPopup(false);
       const jobsRes = await fetch("http://localhost:5000/api/jobs", {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!jobsRes.ok) {
-        const errorText = await jobsRes.text();
-        throw new Error(`Jobs refresh failed with status: ${jobsRes.status} - ${errorText}`);
-      }
+      if (!jobsRes.ok) throw new Error(`Jobs refresh failed with status: ${jobsRes.status}`);
       setJobs(await jobsRes.json());
       toast.success("Preferences saved successfully!");
     } catch (err) {
@@ -158,10 +173,7 @@ export default function Dashboard() {
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
-      if (!extractRes.ok) {
-        const errorText = await extractRes.text();
-        throw new Error(`Resume extraction failed with status: ${extractRes.status} - ${errorText}`);
-      }
+      if (!extractRes.ok) throw new Error(`Resume extraction failed with status: ${extractRes.status}`);
       const { resumeText } = await extractRes.json();
 
       const applyRes = await fetch("http://localhost:5000/api/applications/apply", {
@@ -172,16 +184,12 @@ export default function Dashboard() {
         },
         body: JSON.stringify({ jobId, resumeText, coverLetter }),
       });
-      if (!applyRes.ok) {
-        const errorText = await applyRes.text();
-        throw new Error(`Application submission failed with status: ${applyRes.status} - ${errorText}`);
-      }
+      if (!applyRes.ok) throw new Error(`Application submission failed with status: ${applyRes.status}`);
       setAppliedJobs((prev) => [...prev, jobId]);
       setShowApplyModal(null);
       setResumeFile(null);
       setCoverLetter("");
       toast.success("Application submitted successfully!");
-      await fetchData(); // Refresh data after applying
     } catch (err) {
       console.error("Error applying:", err);
       if (err.message.includes("401")) {
@@ -212,9 +220,7 @@ export default function Dashboard() {
               onMouseEnter={() => setHoveredJob(job)}
               onMouseLeave={() => setHoveredJob(null)}
             >
-              <h3 className="font-semibold text-lg mb-2 text-[#313131]">
-                {job.title}
-              </h3>
+              <h3 className="font-semibold text-lg mb-2 text-[#313131]">{job.title}</h3>
               <div className="text-sm text-[#313131]">
                 <p>{job.details}</p>
                 <p>Skills: {job.skills.join(", ")}</p>
@@ -223,14 +229,14 @@ export default function Dashboard() {
               <div className="mt-4 flex justify-end">
                 <button
                   onClick={() => (job.isApplied ? null : setShowApplyModal(job))}
-                  disabled={job.isApplied || appliedJobs.includes(job._id)}
+                  disabled={job.isApplied}
                   className={`text-sm px-4 py-2 rounded-lg transition duration-200 ${
-                    job.isApplied || appliedJobs.includes(job._id)
+                    job.isApplied
                       ? "bg-gray-400 text-white cursor-not-allowed"
                       : "bg-[#313131] text-white hover:bg-[#4a4a4a]"
                   }`}
                 >
-                  {job.isApplied || appliedJobs.includes(job._id) ? "Applied" : "Apply"}
+                  {job.isApplied ? "Applied" : "Apply"}
                 </button>
               </div>
               {hoveredJob === job && (
@@ -238,9 +244,7 @@ export default function Dashboard() {
                   <h4 className="text-white font-semibold">Missing Skills:</h4>
                   <ul className="list-disc pl-4 text-white">
                     {getMissingSkills(job).length ? (
-                      getMissingSkills(job).map((skill) => (
-                        <li key={skill}>{skill}</li>
-                      ))
+                      getMissingSkills(job).map((skill) => <li key={skill}>{skill}</li>)
                     ) : (
                       <li>None</li>
                     )}
@@ -254,27 +258,19 @@ export default function Dashboard() {
         {showApplyModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-[#d9d9d9] p-6 rounded-lg shadow-lg w-full max-w-md">
-              <h2 className="text-xl font-bold text-[#313131] mb-4">
-                Apply to {showApplyModal.title}
-              </h2>
+              <h2 className="text-xl font-bold text-[#313131] mb-4">Apply to {showApplyModal.title}</h2>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-[#313131] font-semibold mb-2">
-                    Upload Resume (PDF)
-                  </label>
+                  <label className="block text-[#313131] font-semibold mb-2">Upload Resume (PDF)</label>
                   <input
                     type="file"
                     accept=".pdf"
-                    onChange={(e) =>
-                      setResumeFile(e.target.files ? e.target.files[0] : null)
-                    }
+                    onChange={(e) => setResumeFile(e.target.files ? e.target.files[0] : null)}
                     className="w-full p-2 rounded-lg border border-[#313131] text-[#313131]"
                   />
                 </div>
                 <div>
-                  <label className="block text-[#313131] font-semibold mb-2">
-                    Cover Letter
-                  </label>
+                  <label className="block text-[#313131] font-semibold mb-2">Cover Letter</label>
                   <textarea
                     value={coverLetter}
                     onChange={(e) => setCoverLetter(e.target.value)}
@@ -305,9 +301,7 @@ export default function Dashboard() {
         {showPreferencesPopup && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-[#d9d9d9] p-6 rounded-lg shadow-lg w-full max-w-md max-h-[80vh] overflow-y-auto">
-              <h2 className="text-xl font-bold text-[#313131] mb-4">
-                Set Your Preferences
-              </h2>
+              <h2 className="text-xl font-bold text-[#313131] mb-4">Set Your Preferences</h2>
               <div className="mb-4">
                 <h3 className="font-bold text-[#313131] mb-2">Skills</h3>
                 <div className="grid grid-cols-2 gap-2">
