@@ -4,6 +4,7 @@ import Navbar from "@/components/navbar";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
+import { skillOptions, domainOptions } from "@/lib/utils"; // Import centralized lists
 
 export default function Dashboard() {
   const [jobs, setJobs] = useState([]);
@@ -19,25 +20,6 @@ export default function Dashboard() {
   const [hasPreferences, setHasPreferences] = useState(false);
   const router = useRouter();
 
-  const skillOptions = [
-    "Node.js", "React.js", "React Native", "Figma", "Next.js", "JavaScript", "TypeScript",
-    "Python", "Django", "Flask", "Java", "Spring", "C#", ".NET", "C++", "Go", "Ruby",
-    "Rails", "PHP", "Laravel", "Angular", "Vue.js", "Svelte", "HTML", "CSS", "Tailwind CSS",
-    "Bootstrap", "SQL", "MongoDB", "PostgreSQL", "MySQL", "Redis", "GraphQL", "REST API",
-    "AWS", "Azure", "Google Cloud", "Docker", "Kubernetes", "Jenkins", "Git", "CI/CD",
-    "Machine Learning", "TensorFlow", "PyTorch", "Data Analysis", "Pandas", "NumPy",
-    "UI/UX Design", "Adobe XD", "Sketch", "Blockchain", "Solidity", "Cybersecurity",
-  ];
-
-  const domainOptions = [
-    "Web Developer", "Frontend Developer", "Backend Developer", "Full Stack Developer",
-    "Mobile Developer", "UI/UX Designer", "Business Analyst", "Data Analyst", "Data Scientist",
-    "Machine Learning Engineer", "DevOps Engineer", "Cloud Architect", "Software Engineer",
-    "Systems Analyst", "Database Administrator", "Network Engineer", "Cybersecurity Analyst",
-    "Product Manager", "Project Manager", "QA Engineer", "Game Developer", "Blockchain Developer",
-    "AI Engineer", "Embedded Systems Engineer", "Robotics Engineer", "Graphic Designer",
-  ];
-
   useEffect(() => {
     const fetchData = async () => {
       const token = localStorage.getItem("token");
@@ -49,22 +31,34 @@ export default function Dashboard() {
       }
       try {
         const [profileRes, jobsRes, appsRes] = await Promise.all([
-          fetch("http://localhost:5000/api/auth/profile", { headers: { Authorization: `Bearer ${token}` } }),
-          fetch("http://localhost:5000/api/jobs", { headers: { Authorization: `Bearer ${token}` } }),
-          fetch("http://localhost:5000/api/applications", { headers: { Authorization: `Bearer ${token}` } }),
+          fetch("http://localhost:5000/api/auth/profile", {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch("http://localhost:5000/api/jobs", {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch("http://localhost:5000/api/applications", {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
         ]);
 
         if (!profileRes.ok) {
           const errorText = await profileRes.text();
-          throw new Error(`Profile fetch failed with status: ${profileRes.status} - ${errorText}`);
+          throw new Error(
+            `Profile fetch failed with status: ${profileRes.status} - ${errorText}`
+          );
         }
         if (!jobsRes.ok) {
           const errorText = await jobsRes.text();
-          throw new Error(`Jobs fetch failed with status: ${jobsRes.status} - ${errorText}`);
+          throw new Error(
+            `Jobs fetch failed with status: ${jobsRes.status} - ${errorText}`
+          );
         }
         if (!appsRes.ok) {
           const errorText = await appsRes.text();
-          throw new Error(`Applications fetch failed with status: ${appsRes.status} - ${errorText}`);
+          throw new Error(
+            `Applications fetch failed with status: ${appsRes.status} - ${errorText}`
+          );
         }
 
         const profile = await profileRes.json();
@@ -74,33 +68,40 @@ export default function Dashboard() {
         setUserSkills(profile.resumeParsed?.skills || []);
         setPreferredSkills(profile.preferredSkills || []);
         setPreferredDomains(profile.preferredDomains || []);
-        setHasPreferences(profile.preferredSkills?.length > 0 || profile.preferredDomains?.length > 0);
+        setHasPreferences(
+          profile.preferredSkills?.length > 0 || profile.preferredDomains?.length > 0
+        );
         setJobs(jobsData);
-        setAppliedJobs(appsData.map(app => app.job._id));
+        setAppliedJobs(appsData.map((app) => app.job._id));
 
         // Show preferences popup every login if no preferences are set
         if (!profile.preferredSkills?.length && !profile.preferredDomains?.length) {
-          toast.custom((t) => (
-            <div
-              className="bg-[#313131] text-white p-4 rounded-lg shadow-lg flex items-center justify-between max-w-md"
-              style={{ borderRadius: "8px" }}
-            >
-              <span>Please add your preferred skills and domains to see relevant jobs!</span>
-              <button
-                onClick={() => {
-                  console.log("Add Now clicked"); // Debug
-                  setShowPreferencesPopup(true);
-                  toast.dismiss(t.id); // Dismiss the toast after clicking
-                }}
-                className="bg-[#4a4a4a] text-white px-3 py-1 rounded-lg hover:bg-[#5a5a5a] transition ml-4"
+          toast.custom(
+            (t) => (
+              <div
+                className="bg-[#313131] text-white p-4 rounded-lg shadow-lg flex items-center justify-between max-w-md"
+                style={{ borderRadius: "8px" }}
               >
-                Add Now
-              </button>
-            </div>
-          ), {
-            duration: 5000,
-            position: "top-right",
-          });
+                <span>
+                  Please add your preferred skills and domains to see relevant jobs!
+                </span>
+                <button
+                  onClick={() => {
+                    console.log("Add Now clicked"); // Debug
+                    setShowPreferencesPopup(true);
+                    toast.dismiss(t.id); // Dismiss the toast after clicking
+                  }}
+                  className="bg-[#4a4a4a] text-white px-3 py-1 rounded-lg hover:bg-[#5a5a5a] transition ml-4"
+                >
+                  Add Now
+                </button>
+              </div>
+            ),
+            {
+              duration: 5000,
+              position: "top-right",
+            }
+          );
         }
       } catch (err) {
         console.error("Error fetching data:", err);
@@ -117,7 +118,7 @@ export default function Dashboard() {
   }, [router]);
 
   const getMissingSkills = (job) => {
-    return job.skills.filter(skill => !userSkills.includes(skill));
+    return job.skills.filter((skill) => !userSkills.includes(skill));
   };
 
   const handleSkillChange = (skill) => {
@@ -149,7 +150,9 @@ export default function Dashboard() {
       });
       if (!res.ok) {
         const errorText = await res.text();
-        throw new Error(`Failed to save preferences with status: ${res.status} - ${errorText}`);
+        throw new Error(
+          `Failed to save preferences with status: ${res.status} - ${errorText}`
+        );
       }
       setHasPreferences(true);
       setShowPreferencesPopup(false);
@@ -158,7 +161,9 @@ export default function Dashboard() {
       });
       if (!jobsRes.ok) {
         const errorText = await jobsRes.text();
-        throw new Error(`Jobs refresh failed with status: ${jobsRes.status} - ${errorText}`);
+        throw new Error(
+          `Jobs refresh failed with status: ${jobsRes.status} - ${errorText}`
+        );
       }
       setJobs(await jobsRes.json());
       toast.success("Preferences saved successfully!");
@@ -176,7 +181,7 @@ export default function Dashboard() {
 
   const handleApply = async (jobId) => {
     if (!resumeFile || !coverLetter) {
-      alert("Please upload a resume and write a cover letter.");
+      toast.error("Please upload a resume and write a cover letter.");
       return;
     }
 
@@ -196,7 +201,9 @@ export default function Dashboard() {
       });
       if (!extractRes.ok) {
         const errorText = await extractRes.text();
-        throw new Error(`Resume extraction failed with status: ${extractRes.status} - ${errorText}`);
+        throw new Error(
+          `Resume extraction failed with status: ${extractRes.status} - ${errorText}`
+        );
       }
       const { resumeText } = await extractRes.json();
 
@@ -210,7 +217,9 @@ export default function Dashboard() {
       });
       if (!applyRes.ok) {
         const errorText = await applyRes.text();
-        throw new Error(`Application submission failed with status: ${applyRes.status} - ${errorText}`);
+        throw new Error(
+          `Application submission failed with status: ${applyRes.status} - ${errorText}`
+        );
       }
       setAppliedJobs((prev) => [...prev, jobId]);
       setShowApplyModal(null);
@@ -247,14 +256,17 @@ export default function Dashboard() {
               onMouseEnter={() => setHoveredJob(job)}
               onMouseLeave={() => setHoveredJob(null)}
             >
-              <h3 className="font-semibold text-lg mb-2 text-[#313131]">{job.title}</h3>
+              <h3 className="font-semibold text-lg mb-2 text-[#313131]">
+                {job.title}
+              </h3>
               <div className="text-sm text-[#313131]">
                 <p>{job.details}</p>
                 <p>Skills: {job.skills.join(", ")}</p>
+                <p>Salary: {job.salary || "Not specified"}</p> {/* Display salary */}
               </div>
               <div className="mt-4 flex justify-end">
                 <button
-                  onClick={() => job.isApplied ? null : setShowApplyModal(job)}
+                  onClick={() => (job.isApplied ? null : setShowApplyModal(job))}
                   disabled={job.isApplied}
                   className={`text-sm px-4 py-2 rounded-lg transition duration-200 ${
                     job.isApplied
@@ -270,7 +282,9 @@ export default function Dashboard() {
                   <h4 className="text-white font-semibold">Missing Skills:</h4>
                   <ul className="list-disc pl-4 text-white">
                     {getMissingSkills(job).length ? (
-                      getMissingSkills(job).map((skill) => <li key={skill}>{skill}</li>)
+                      getMissingSkills(job).map((skill) => (
+                        <li key={skill}>{skill}</li>
+                      ))
                     ) : (
                       <li>None</li>
                     )}
@@ -284,19 +298,27 @@ export default function Dashboard() {
         {showApplyModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-[#d9d9d9] p-6 rounded-lg shadow-lg w-full max-w-md">
-              <h2 className="text-xl font-bold text-[#313131] mb-4">Apply to {showApplyModal.title}</h2>
+              <h2 className="text-xl font-bold text-[#313131] mb-4">
+                Apply to {showApplyModal.title}
+              </h2>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-[#313131] font-semibold mb-2">Upload Resume (PDF)</label>
+                  <label className="block text-[#313131] font-semibold mb-2">
+                    Upload Resume (PDF)
+                  </label>
                   <input
                     type="file"
                     accept=".pdf"
-                    onChange={(e) => setResumeFile(e.target.files ? e.target.files[0] : null)}
+                    onChange={(e) =>
+                      setResumeFile(e.target.files ? e.target.files[0] : null)
+                    }
                     className="w-full p-2 rounded-lg border border-[#313131] text-[#313131]"
                   />
                 </div>
                 <div>
-                  <label className="block text-[#313131] font-semibold mb-2">Cover Letter</label>
+                  <label className="block text-[#313131] font-semibold mb-2">
+                    Cover Letter
+                  </label>
                   <textarea
                     value={coverLetter}
                     onChange={(e) => setCoverLetter(e.target.value)}
@@ -327,7 +349,9 @@ export default function Dashboard() {
         {showPreferencesPopup && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-[#d9d9d9] p-6 rounded-lg shadow-lg w-full max-w-md max-h-[80vh] overflow-y-auto">
-              <h2 className="text-xl font-bold text-[#313131] mb-4">Set Your Preferences</h2>
+              <h2 className="text-xl font-bold text-[#313131] mb-4">
+                Set Your Preferences
+              </h2>
               <div className="mb-4">
                 <h3 className="font-bold text-[#313131] mb-2">Skills</h3>
                 <div className="grid grid-cols-2 gap-2">
@@ -379,9 +403,21 @@ export default function Dashboard() {
         )}
 
         <div className="mt-8 flex flex-wrap justify-around gap-4">
-          <a href="/resume-extraction"><button className="bg-[#313131] text-white p-3 rounded-lg hover:bg-[#4a4a4a] transition duration-200 shadow-md w-48">Resume Extraction</button></a>
-          <a href="/track-applications"><button className="bg-[#313131] text-white p-3 rounded-lg hover:bg-[#4a4a4a] transition duration-200 shadow-md w-48">Track Applications</button></a>
-          <a href="/analytics"><button className="bg-[#313131] text-white p-3 rounded-lg hover:bg-[#4a4a4a] transition duration-200 shadow-md w-48">AI Analytics</button></a>
+          <a href="/resume-extraction">
+            <button className="bg-[#313131] text-white p-3 rounded-lg hover:bg-[#4a4a4a] transition duration-200 shadow-md w-48">
+              Resume Extraction
+            </button>
+          </a>
+          <a href="/track-applications">
+            <button className="bg-[#313131] text-white p-3 rounded-lg hover:bg-[#4a4a4a] transition duration-200 shadow-md w-48">
+              Track Applications
+            </button>
+          </a>
+          <a href="/analytics">
+            <button className="bg-[#313131] text-white p-3 rounded-lg hover:bg-[#4a4a4a] transition duration-200 shadow-md w-48">
+              AI Analytics
+            </button>
+          </a>
         </div>
       </main>
     </div>

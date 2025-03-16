@@ -5,11 +5,12 @@ import { FileText, Edit, X } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import toast from "react-hot-toast";
+import { skillOptions, domainOptions } from "@/lib/utils";
 
 export default function RecruiterDashboard() {
   const [jobs, setJobs] = useState([]);
   const [editingJob, setEditingJob] = useState(null);
-  const [formData, setFormData] = useState({ title: "", details: "", skills: "" });
+  const [formData, setFormData] = useState({ title: "", details: "", skills: [] });
   const router = useRouter();
   const pathname = usePathname();
 
@@ -67,7 +68,7 @@ export default function RecruiterDashboard() {
     setFormData({
       title: job.title || "",
       details: job.details || "",
-      skills: (job.skills || []).join(", "),
+      skills: job.skills || [],
     });
   };
 
@@ -98,14 +99,13 @@ export default function RecruiterDashboard() {
   const handleSaveEdit = async (jobId) => {
     const token = localStorage.getItem("token");
     try {
-      const skillsArray = formData.skills.split(",").map((s) => s.trim());
       const res = await fetch(`http://localhost:5000/api/jobs/${jobId}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ ...formData, skills: skillsArray }),
+        body: JSON.stringify({ ...formData }),
       });
       if (!res.ok) {
         const errorData = await res.json();
@@ -125,6 +125,15 @@ export default function RecruiterDashboard() {
 
   const handleChange = (e) => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  };
+
+  const handleSkillChange = (skill) => {
+    setFormData((prev) => ({
+      ...prev,
+      skills: prev.skills.includes(skill)
+        ? prev.skills.filter((s) => s !== skill)
+        : [...prev.skills, skill],
+    }));
   };
 
   return (
@@ -157,21 +166,35 @@ export default function RecruiterDashboard() {
                       className="w-full p-2 mb-2 border rounded text-[#313131]"
                       placeholder="Job Title"
                     />
-                    <textarea
+                    <select
                       name="details"
                       value={formData.details}
                       onChange={handleChange}
                       className="w-full p-2 mb-2 border rounded text-[#313131]"
-                      placeholder="Job Details"
-                    />
-                    <input
-                      type="text"
-                      name="skills"
-                      value={formData.skills}
-                      onChange={handleChange}
-                      className="w-full p-2 mb-2 border rounded text-[#313131]"
-                      placeholder="Skills (comma-separated)"
-                    />
+                    >
+                      <option value="">Select a domain</option>
+                      {domainOptions.map((domain) => (
+                        <option key={domain} value={domain}>
+                          {domain}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="mb-4">
+                      <h3 className="font-bold text-[#313131] mb-2">Skills</h3>
+                      <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
+                        {skillOptions.map((skill) => (
+                          <label key={skill} className="flex items-center text-[#313131]">
+                            <input
+                              type="checkbox"
+                              checked={formData.skills.includes(skill)}
+                              onChange={() => handleSkillChange(skill)}
+                              className="mr-2"
+                            />
+                            {skill}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
                     <div className="flex space-x-2 w-full">
                       <button
                         onClick={() => handleSaveEdit(job._id)}
@@ -196,6 +219,9 @@ export default function RecruiterDashboard() {
                         <p className="text-sm">{job.details || "No details"}</p>
                         <p className="text-xs mt-1">
                           <strong>Skills:</strong> {(job.skills || []).join(", ") || "None"}
+                        </p>
+                        <p className="text-xs mt-1">
+                          <strong>Salary:</strong> {job.salary || "Not specified"}
                         </p>
                         <p className="text-xs mt-1">
                           <strong>Status:</strong> {job.isClosed ? "Closed" : "Open"}

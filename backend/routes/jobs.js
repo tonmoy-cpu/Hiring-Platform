@@ -6,16 +6,19 @@ const Application = require("../models/Application");
 const User = require("../models/User");
 
 router.post("/", auth, async (req, res) => {
-  if (req.user.userType !== "recruiter") return res.status(403).json({ msg: "Not authorized" });
+  if (req.user.userType !== "recruiter")
+    return res.status(403).json({ msg: "Not authorized" });
 
-  const { title, details, skills } = req.body;
-  if (!title || !details || !skills) return res.status(400).json({ msg: "Missing required fields" });
+  const { title, details, skills, salary } = req.body;
+  if (!title || !details || !skills)
+    return res.status(400).json({ msg: "Missing required fields" });
 
   try {
     const job = new Job({
       title,
       details,
       skills,
+      salary, // Include salary in job creation
       recruiter: req.user.id,
     });
     await job.save();
@@ -34,12 +37,24 @@ router.get("/", auth, async (req, res) => {
       const appliedJobs = await Application.find({ candidate: req.user.id }).select("job");
       const appliedJobIds = appliedJobs.map((app) => app.job.toString());
 
+      // Normalize skills and domains for case-insensitive matching
+      const preferredSkills = (user.preferredSkills || []).map((s) => s.toLowerCase());
+      const preferredDomains = (user.preferredDomains || []).map((d) => d.toLowerCase());
+
       // Fetch jobs matching preferred skills or domains, excluding closed jobs
       jobs = await Job.find({
         isClosed: false,
         $or: [
-          { skills: { $in: user.preferredSkills } },
-          { details: { $in: user.preferredDomains.map((d) => new RegExp(d, "i")) } },
+          {
+            skills: {
+              $in: preferredSkills.map((s) => new RegExp(s, "i")), // Case-insensitive matching
+            },
+          },
+          {
+            details: {
+              $in: preferredDomains.map((d) => new RegExp(d, "i")), // Case-insensitive matching
+            },
+          },
         ],
       }).populate("recruiter", "username");
 
@@ -59,10 +74,11 @@ router.get("/", auth, async (req, res) => {
 });
 
 router.get("/recruiter", auth, async (req, res) => {
-  if (req.user.userType !== "recruiter") return res.status(403).json({ msg: "Not authorized" });
+  if (req.user.userType !== "recruiter")
+    return res.status(403).json({ msg: "Not authorized" });
 
   try {
-    const jobs = await Job.find({ recruiter: req.user.id });
+    const jobs = await Job.find({ recruiter: req.user.id }).populate("recruiter", "username");
     res.json(jobs);
   } catch (err) {
     console.error("Error in /jobs/recruiter:", err);
@@ -71,9 +87,10 @@ router.get("/recruiter", auth, async (req, res) => {
 });
 
 router.put("/:id", auth, async (req, res) => {
-  if (req.user.userType !== "recruiter") return res.status(403).json({ msg: "Not authorized" });
+  if (req.user.userType !== "recruiter")
+    return res.status(403).json({ msg: "Not authorized" });
 
-  const { title, details, skills } = req.body;
+  const { title, details, skills, salary } = req.body; // Include salary in updates
   try {
     const job = await Job.findById(req.params.id);
     if (!job) return res.status(404).json({ msg: "Job not found" });
@@ -84,6 +101,7 @@ router.put("/:id", auth, async (req, res) => {
     job.title = title || job.title;
     job.details = details || job.details;
     job.skills = skills || job.skills;
+    job.salary = salary || job.salary; // Update salary if provided
     await job.save();
     res.json(job);
   } catch (err) {
@@ -93,7 +111,8 @@ router.put("/:id", auth, async (req, res) => {
 });
 
 router.put("/:id/close", auth, async (req, res) => {
-  if (req.user.userType !== "recruiter") return res.status(403).json({ msg: "Not authorized" });
+  if (req.user.userType !== "recruiter")
+    return res.status(403).json({ msg: "Not authorized" });
 
   try {
     const job = await Job.findById(req.params.id);
