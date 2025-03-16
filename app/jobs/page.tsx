@@ -8,14 +8,16 @@ import toast from "react-hot-toast";
 export default function Jobs() {
   const [jobs, setJobs] = useState([]);
   const [appliedJobs, setAppliedJobs] = useState<string[]>([]);
-  const [filter, setFilter] = useState(""); // Text search
-  const [skillFilter, setSkillFilter] = useState(""); // Skill filter
-  const [minSalary, setMinSalary] = useState(""); // Min salary filter
-  const [maxSalary, setMaxSalary] = useState(""); // Max salary filter
-  const [statusFilter, setStatusFilter] = useState("open"); // Status filter: "open" or "all"
+  const [filter, setFilter] = useState("");
+  const [skillFilter, setSkillFilter] = useState("");
+  const [minSalary, setMinSalary] = useState("");
+  const [maxSalary, setMaxSalary] = useState("");
+  const [statusFilter, setStatusFilter] = useState("open");
   const [showApplyModal, setShowApplyModal] = useState(null);
+  const [showAnalyzeModal, setShowAnalyzeModal] = useState(null);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [coverLetter, setCoverLetter] = useState("");
+  const [analysisResult, setAnalysisResult] = useState(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -26,11 +28,11 @@ export default function Jobs() {
         return;
       }
       try {
-        // Fetch all jobs, including closed ones if statusFilter is "all"
-        const jobsUrl = statusFilter === "all" 
-          ? "http://localhost:5000/api/jobs?all=true&includeClosed=true" 
-          : "http://localhost:5000/api/jobs?all=true";
-        
+        const jobsUrl =
+          statusFilter === "all"
+            ? "http://localhost:5000/api/jobs?all=true&includeClosed=true"
+            : "http://localhost:5000/api/jobs?all=true";
+
         const [jobsRes, appsRes] = await Promise.all([
           fetch(jobsUrl, {
             headers: { Authorization: `Bearer ${token}` },
@@ -47,7 +49,7 @@ export default function Jobs() {
         const jobsData = await jobsRes.json();
         const appsData = await appsRes.json();
 
-        console.log("Fetched jobs for /jobs:", jobsData.length, "Jobs:", jobsData.map(j => j.title));
+        console.log("Fetched jobs for /jobs:", jobsData.length, "Jobs:", jobsData.map((j) => j.title));
         setJobs(jobsData);
         setAppliedJobs(appsData.map((app) => app.job._id));
       } catch (err) {
@@ -59,7 +61,7 @@ export default function Jobs() {
       }
     };
     fetchData();
-  }, [router, statusFilter]); // Re-fetch when statusFilter changes
+  }, [router, statusFilter]);
 
   const handleApply = async (jobId: string) => {
     if (!resumeFile || !coverLetter) {
@@ -107,6 +109,57 @@ export default function Jobs() {
     }
   };
 
+  const handleAnalyze = async (jobId: string) => {
+    if (!resumeFile) {
+      toast.error("Please upload a resume to analyze.");
+      return;
+    }
+
+    // Check file size (e.g., limit to 5MB)
+    if (resumeFile.size > 5 * 1024 * 1024) {
+      toast.error("Resume file is too large. Please upload a file under 5MB.");
+      return;
+    }
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      router.push("/");
+      return;
+    }
+
+    try {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64Resume = reader.result.split(",")[1];
+        const analyzeRes = await fetch("http://localhost:5000/api/resume/analyze", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ jobId, resume: base64Resume }),
+        });
+
+        if (!analyzeRes.ok) {
+          const errorData = await analyzeRes.json();
+          throw new Error(`Analysis failed: ${analyzeRes.status} - ${errorData.msg || "Unknown error"}`);
+        }
+        const result = await analyzeRes.json();
+        setAnalysisResult(result);
+      };
+      reader.onerror = () => {
+        throw new Error("Failed to read resume file.");
+      };
+      reader.readAsDataURL(resumeFile);
+    } catch (err) {
+      toast.error(`Error analyzing resume: ${err.message}`);
+      if (err.message.includes("401")) {
+        localStorage.removeItem("token");
+        router.push("/");
+      }
+    }
+  };
+
   const filteredJobs = jobs.filter((job) => {
     const textMatch =
       job.title.toLowerCase().includes(filter.toLowerCase()) ||
@@ -117,7 +170,7 @@ export default function Jobs() {
       : true;
 
     const salaryMatch = () => {
-      if (!job.salary) return !minSalary && !maxSalary; // No salary specified, only match if no range set
+      if (!job.salary) return !minSalary && !maxSalary;
       const salaryNum = parseInt(job.salary.replace(/[^0-9]/g, ""), 10) || 0;
       const min = minSalary ? parseInt(minSalary, 10) : -Infinity;
       const max = maxSalary ? parseInt(maxSalary, 10) : Infinity;
@@ -136,7 +189,6 @@ export default function Jobs() {
         </div>
 
         <div className="mb-6 space-y-4">
-          {/* Text Search */}
           <input
             type="text"
             placeholder="Search jobs by title or domain..."
@@ -144,10 +196,7 @@ export default function Jobs() {
             onChange={(e) => setFilter(e.target.value)}
             className="w-full p-3 rounded-lg bg-[#d9d9d9] text-[#313131] border border-[#4f4d4d] focus:outline-none focus:ring-2 focus:ring-[#313131]"
           />
-
-          {/* Filters */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Skill Filter */}
             <div>
               <label className="block text-white mb-1">Filter by Skill</label>
               <input
@@ -158,8 +207,6 @@ export default function Jobs() {
                 className="w-full p-2 rounded-lg bg-[#d9d9d9] text-[#313131] border border-[#4f4d4d] focus:outline-none focus:ring-2 focus:ring-[#313131]"
               />
             </div>
-
-            {/* Salary Range */}
             <div>
               <label className="block text-white mb-1">Min Salary</label>
               <input
@@ -181,8 +228,6 @@ export default function Jobs() {
               />
             </div>
           </div>
-
-          {/* Status Filter */}
           <div>
             <label className="block text-white mb-1">Job Status</label>
             <select
@@ -210,7 +255,13 @@ export default function Jobs() {
                 <p className="text-xs text-gray-600 mt-1">Skills: {job.skills.join(", ")}</p>
                 <p className="text-xs text-gray-600 mt-1">Salary: {job.salary || "Not specified"}</p>
                 <p className="text-xs text-gray-600 mt-1">Status: {job.isClosed ? "Closed" : "Open"}</p>
-                <div className="mt-4 flex justify-end">
+                <div className="mt-4 flex justify-end space-x-2">
+                  <button
+                    onClick={() => setShowAnalyzeModal(job)}
+                    className="text-sm px-4 py-2 rounded-lg bg-[#4a4a4a] text-white hover:bg-[#313131] transition duration-200"
+                  >
+                    Analyze Resume
+                  </button>
                   <button
                     onClick={() => (appliedJobs.includes(job._id) ? null : setShowApplyModal(job))}
                     disabled={appliedJobs.includes(job._id) || job.isClosed}
@@ -228,6 +279,7 @@ export default function Jobs() {
           )}
         </div>
 
+        {/* Apply Modal */}
         {showApplyModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-[#d9d9d9] p-6 rounded-lg shadow-lg w-full max-w-md">
@@ -264,6 +316,68 @@ export default function Jobs() {
                     className="bg-[#313131] text-white px-4 py-2 rounded hover:bg-[#4a4a4a] transition"
                   >
                     Submit
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Analyze Resume Modal */}
+        {showAnalyzeModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-[#d9d9d9] p-6 rounded-lg shadow-lg w-full max-w-md">
+              <h2 className="text-xl font-bold text-[#313131] mb-4">
+                Analyze Resume for {showAnalyzeModal.title}
+              </h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-[#313131] font-semibold mb-2">Upload Resume (PDF)</label>
+                  <input
+                    type="file"
+                    accept=".pdf"
+                    onChange={(e) => setResumeFile(e.target.files ? e.target.files[0] : null)}
+                    className="w-full p-2 rounded-lg border border-[#313131] text-[#313131]"
+                  />
+                </div>
+                {analysisResult && (
+                  <div className="text-[#313131]">
+                    <p>
+                      <strong>Match Score:</strong> {analysisResult.matchScore}%
+                    </p>
+                    <p>
+                      <strong>Missing Keywords:</strong>{" "}
+                      {analysisResult.missingKeywords.join(", ") || "None"}
+                    </p>
+                    <p>
+                      <strong>Missing Skills:</strong> {analysisResult.missingSkills.join(", ") || "None"}
+                    </p>
+                    <p>
+                      <strong>Feedback:</strong>
+                    </p>
+                    <ul className="list-disc pl-5">
+                      {analysisResult.feedback.map((item, index) => (
+                        <li key={index}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <div className="flex justify-end space-x-2">
+                  <button
+                    onClick={() => {
+                      setShowAnalyzeModal(null);
+                      setAnalysisResult(null);
+                      setResumeFile(null);
+                    }}
+                    className="bg-gray-400 text-white px-4 py-2 rounded hover:bg-gray-500 transition"
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={() => handleAnalyze(showAnalyzeModal._id)}
+                    className="bg-[#313131] text-white px-4 py-2 rounded hover:bg-[#4a4a4a] transition"
+                  >
+                    Analyze
                   </button>
                 </div>
               </div>
