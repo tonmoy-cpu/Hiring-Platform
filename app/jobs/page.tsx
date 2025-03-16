@@ -8,7 +8,11 @@ import toast from "react-hot-toast";
 export default function Jobs() {
   const [jobs, setJobs] = useState([]);
   const [appliedJobs, setAppliedJobs] = useState<string[]>([]);
-  const [filter, setFilter] = useState("");
+  const [filter, setFilter] = useState(""); // Text search
+  const [skillFilter, setSkillFilter] = useState(""); // Skill filter
+  const [minSalary, setMinSalary] = useState(""); // Min salary filter
+  const [maxSalary, setMaxSalary] = useState(""); // Max salary filter
+  const [statusFilter, setStatusFilter] = useState("open"); // Status filter: "open" or "all"
   const [showApplyModal, setShowApplyModal] = useState(null);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [coverLetter, setCoverLetter] = useState("");
@@ -22,9 +26,15 @@ export default function Jobs() {
         return;
       }
       try {
+        // Fetch all jobs, including closed ones if statusFilter is "all"
+        const jobsUrl = statusFilter === "all" 
+          ? "http://localhost:5000/api/jobs?all=true&includeClosed=true" 
+          : "http://localhost:5000/api/jobs?all=true";
+        
         const [jobsRes, appsRes] = await Promise.all([
-          fetch("http://localhost:5000/api/jobs?all=true", {
+          fetch(jobsUrl, {
             headers: { Authorization: `Bearer ${token}` },
+            cache: "no-store",
           }),
           fetch("http://localhost:5000/api/applications", {
             headers: { Authorization: `Bearer ${token}` },
@@ -37,6 +47,7 @@ export default function Jobs() {
         const jobsData = await jobsRes.json();
         const appsData = await appsRes.json();
 
+        console.log("Fetched jobs for /jobs:", jobsData.length, "Jobs:", jobsData.map(j => j.title));
         setJobs(jobsData);
         setAppliedJobs(appsData.map((app) => app.job._id));
       } catch (err) {
@@ -48,7 +59,7 @@ export default function Jobs() {
       }
     };
     fetchData();
-  }, [router]);
+  }, [router, statusFilter]); // Re-fetch when statusFilter changes
 
   const handleApply = async (jobId: string) => {
     if (!resumeFile || !coverLetter) {
@@ -96,10 +107,25 @@ export default function Jobs() {
     }
   };
 
-  const filteredJobs = jobs.filter((job) =>
-    job.title.toLowerCase().includes(filter.toLowerCase()) ||
-    job.details.toLowerCase().includes(filter.toLowerCase())
-  );
+  const filteredJobs = jobs.filter((job) => {
+    const textMatch =
+      job.title.toLowerCase().includes(filter.toLowerCase()) ||
+      job.details.toLowerCase().includes(filter.toLowerCase());
+
+    const skillMatch = skillFilter
+      ? job.skills.some((skill) => skill.toLowerCase().includes(skillFilter.toLowerCase()))
+      : true;
+
+    const salaryMatch = () => {
+      if (!job.salary) return !minSalary && !maxSalary; // No salary specified, only match if no range set
+      const salaryNum = parseInt(job.salary.replace(/[^0-9]/g, ""), 10) || 0;
+      const min = minSalary ? parseInt(minSalary, 10) : -Infinity;
+      const max = maxSalary ? parseInt(maxSalary, 10) : Infinity;
+      return salaryNum >= min && salaryNum <= max;
+    };
+
+    return textMatch && skillMatch && salaryMatch();
+  });
 
   return (
     <div className="min-h-screen flex flex-col bg-[#373737]">
@@ -109,7 +135,8 @@ export default function Jobs() {
           <h1 className="text-3xl font-semibold text-center uppercase text-white tracking-wide">All Jobs</h1>
         </div>
 
-        <div className="mb-6">
+        <div className="mb-6 space-y-4">
+          {/* Text Search */}
           <input
             type="text"
             placeholder="Search jobs by title or domain..."
@@ -117,33 +144,88 @@ export default function Jobs() {
             onChange={(e) => setFilter(e.target.value)}
             className="w-full p-3 rounded-lg bg-[#d9d9d9] text-[#313131] border border-[#4f4d4d] focus:outline-none focus:ring-2 focus:ring-[#313131]"
           />
+
+          {/* Filters */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Skill Filter */}
+            <div>
+              <label className="block text-white mb-1">Filter by Skill</label>
+              <input
+                type="text"
+                placeholder="e.g., React.js"
+                value={skillFilter}
+                onChange={(e) => setSkillFilter(e.target.value)}
+                className="w-full p-2 rounded-lg bg-[#d9d9d9] text-[#313131] border border-[#4f4d4d] focus:outline-none focus:ring-2 focus:ring-[#313131]"
+              />
+            </div>
+
+            {/* Salary Range */}
+            <div>
+              <label className="block text-white mb-1">Min Salary</label>
+              <input
+                type="number"
+                placeholder="e.g., 30000"
+                value={minSalary}
+                onChange={(e) => setMinSalary(e.target.value)}
+                className="w-full p-2 rounded-lg bg-[#d9d9d9] text-[#313131] border border-[#4f4d4d] focus:outline-none focus:ring-2 focus:ring-[#313131]"
+              />
+            </div>
+            <div>
+              <label className="block text-white mb-1">Max Salary</label>
+              <input
+                type="number"
+                placeholder="e.g., 80000"
+                value={maxSalary}
+                onChange={(e) => setMaxSalary(e.target.value)}
+                className="w-full p-2 rounded-lg bg-[#d9d9d9] text-[#313131] border border-[#4f4d4d] focus:outline-none focus:ring-2 focus:ring-[#313131]"
+              />
+            </div>
+          </div>
+
+          {/* Status Filter */}
+          <div>
+            <label className="block text-white mb-1">Job Status</label>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="w-full p-2 rounded-lg bg-[#d9d9d9] text-[#313131] border border-[#4f4d4d] focus:outline-none focus:ring-2 focus:ring-[#313131]"
+            >
+              <option value="open">Open Jobs</option>
+              <option value="all">All Jobs (Open + Closed)</option>
+            </select>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {filteredJobs.map((job) => (
-            <div
-              key={job._id}
-              className="job-card p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 bg-[#d9d9d9]"
-            >
-              <h3 className="font-semibold text-lg mb-2 text-[#313131]">{job.title}</h3>
-              <p className="text-sm text-[#313131]">{job.details}</p>
-              <p className="text-xs text-gray-600 mt-1">Skills: {job.skills.join(", ")}</p>
-              <p className="text-xs text-gray-600 mt-1">Salary: {job.salary || "Not specified"}</p>
-              <div className="mt-4 flex justify-end">
-                <button
-                  onClick={() => (appliedJobs.includes(job._id) ? null : setShowApplyModal(job))}
-                  disabled={appliedJobs.includes(job._id)}
-                  className={`text-sm px-4 py-2 rounded-lg transition duration-200 ${
-                    appliedJobs.includes(job._id)
-                      ? "bg-gray-400 text-white cursor-not-allowed"
-                      : "bg-[#313131] text-white hover:bg-[#4a4a4a]"
-                  }`}
-                >
-                  {appliedJobs.includes(job._id) ? "Applied" : "Apply"}
-                </button>
+          {filteredJobs.length === 0 ? (
+            <p className="text-white text-center col-span-full">No jobs match your filters.</p>
+          ) : (
+            filteredJobs.map((job) => (
+              <div
+                key={job._id}
+                className="job-card p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 bg-[#d9d9d9]"
+              >
+                <h3 className="font-semibold text-lg mb-2 text-[#313131]">{job.title}</h3>
+                <p className="text-sm text-[#313131]">{job.details}</p>
+                <p className="text-xs text-gray-600 mt-1">Skills: {job.skills.join(", ")}</p>
+                <p className="text-xs text-gray-600 mt-1">Salary: {job.salary || "Not specified"}</p>
+                <p className="text-xs text-gray-600 mt-1">Status: {job.isClosed ? "Closed" : "Open"}</p>
+                <div className="mt-4 flex justify-end">
+                  <button
+                    onClick={() => (appliedJobs.includes(job._id) ? null : setShowApplyModal(job))}
+                    disabled={appliedJobs.includes(job._id) || job.isClosed}
+                    className={`text-sm px-4 py-2 rounded-lg transition duration-200 ${
+                      appliedJobs.includes(job._id) || job.isClosed
+                        ? "bg-gray-400 text-white cursor-not-allowed"
+                        : "bg-[#313131] text-white hover:bg-[#4a4a4a]"
+                    }`}
+                  >
+                    {appliedJobs.includes(job._id) ? "Applied" : job.isClosed ? "Closed" : "Apply"}
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
 
         {showApplyModal && (
