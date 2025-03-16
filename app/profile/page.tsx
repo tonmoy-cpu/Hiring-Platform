@@ -2,17 +2,23 @@
 
 import Navbar from "@/components/navbar";
 import { useState, useEffect } from "react";
+import toast from "react-hot-toast";
+import { skillOptions, domainOptions } from "@/lib/utils"; // Import centralized lists
 
 export default function Profile() {
   const [profile, setProfile] = useState(null);
   const [editMode, setEditMode] = useState(false);
   const [formData, setFormData] = useState({});
+  const [preferredSkills, setPreferredSkills] = useState([]);
+  const [preferredDomains, setPreferredDomains] = useState([]);
+  const [showPreferencesPopup, setShowPreferencesPopup] = useState(false);
+  const [toastShown, setToastShown] = useState(false); // Prevent repeated toasts
 
   const fetchProfile = async () => {
     const token = localStorage.getItem("token");
     if (!token) {
       console.log("No token found");
-      return;
+      return null;
     }
     try {
       const res = await fetch("http://localhost:5000/api/auth/profile", {
@@ -23,14 +29,54 @@ export default function Profile() {
       console.log("Profile fetched:", data);
       setProfile(data);
       setFormData(data.resumeParsed || { contact: {}, skills: [], experience: [], education: [] });
+      setPreferredSkills(data.preferredSkills || []);
+      setPreferredDomains(data.preferredDomains || []);
+      return data;
     } catch (err) {
       console.error("Error fetching profile:", err.message);
+      return null;
     }
   };
 
   useEffect(() => {
-    fetchProfile();
-  }, []);
+    const loadProfile = async () => {
+      const profileData = await fetchProfile();
+      if (
+        profileData &&
+        profileData.userType === "candidate" &&
+        (!profileData.preferredSkills?.length || !profileData.preferredDomains?.length) &&
+        !toastShown
+      ) {
+        console.log("Triggering toast for preferred skills/domains");
+        toast.custom(
+          (t) => (
+            <div
+              className="bg-[#313131] text-white p-4 rounded-lg shadow-lg flex items-center justify-between max-w-md"
+              style={{ borderRadius: "8px" }}
+            >
+              <span>Please add your preferred skills and domains to see relevant jobs!</span>
+              <button
+                onClick={() => {
+                  console.log("Add Now clicked");
+                  setShowPreferencesPopup(true);
+                  toast.dismiss(t.id);
+                }}
+                className="bg-[#4a4a4a] text-white px-3 py-1 rounded-lg hover:bg-[#5a5a5a] transition ml-4"
+              >
+                Add Now
+              </button>
+            </div>
+          ),
+          {
+            duration: 5000,
+            position: "top-right",
+          }
+        );
+        setToastShown(true);
+      }
+    };
+    loadProfile();
+  }, [toastShown]);
 
   const handleChange = (e, section) => {
     const updated = { ...formData };
@@ -71,7 +117,6 @@ export default function Profile() {
   const handleSave = async () => {
     const token = localStorage.getItem("token");
     try {
-      console.log("Saving profile with formData:", formData);
       const res = await fetch("http://localhost:5000/api/auth/profile", {
         method: "PUT",
         headers: {
@@ -80,19 +125,52 @@ export default function Profile() {
         },
         body: JSON.stringify({ resumeParsed: formData }),
       });
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.msg || "Failed to update profile");
-      }
-      const updatedProfile = await res.json();
-      console.log("Profile update response:", updatedProfile);
-      setProfile(updatedProfile);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.msg || "Failed to update profile");
+      setProfile({ ...profile, resumeParsed: formData });
       setEditMode(false);
       showToast("Profile updated successfully!");
-      await fetchProfile();
     } catch (err) {
       console.error("Error updating profile:", err);
       alert("Error: " + err.message);
+    }
+  };
+
+  const handleSkillChange = (skill) => {
+    setPreferredSkills((prev) =>
+      prev.includes(skill) ? prev.filter((s) => s !== skill) : [...prev, skill]
+    );
+  };
+
+  const handleDomainChange = (domain) => {
+    setPreferredDomains((prev) =>
+      prev.includes(domain) ? prev.filter((d) => d !== domain) : [...prev, domain]
+    );
+  };
+
+  const savePreferences = async () => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+    try {
+      const res = await fetch("http://localhost:5000/api/auth/preferences", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ preferredSkills, preferredDomains }),
+      });
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(`Failed to save preferences with status: ${res.status} - ${errorText}`);
+      }
+      const updatedProfile = await res.json();
+      setProfile(updatedProfile);
+      setShowPreferencesPopup(false);
+      toast.success("Preferences saved successfully!");
+    } catch (err) {
+      console.error("Error saving preferences:", err);
+      toast.error("Error saving preferences: " + err.message);
     }
   };
 
@@ -302,6 +380,60 @@ export default function Profile() {
             <p className="text-center text-[#313131]">No resume uploaded yet.</p>
           )}
         </div>
+
+        {showPreferencesPopup && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-[#d9d9d9] p-6 rounded-lg shadow-lg w-full max-w-md max-h-[80vh] overflow-y-auto">
+              <h2 className="text-xl font-bold text-[#313131] mb-4">Set Your Preferences</h2>
+              <div className="mb-4">
+                <h3 className="font-bold text-[#313131] mb-2">Skills</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  {skillOptions.map((skill) => (
+                    <label key={skill} className="flex items-center text-[#313131]">
+                      <input
+                        type="checkbox"
+                        checked={preferredSkills.includes(skill)}
+                        onChange={() => handleSkillChange(skill)}
+                        className="mr-2"
+                      />
+                      {skill}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="mb-4">
+                <h3 className="font-bold text-[#313131] mb-2">Domains</h3>
+                <div className="grid grid-cols-1 gap-2">
+                  {domainOptions.map((domain) => (
+                    <label key={domain} className="flex items-center text-[#313131]">
+                      <input
+                        type="checkbox"
+                        checked={preferredDomains.includes(domain)}
+                        onChange={() => handleDomainChange(domain)}
+                        className="mr-2"
+                      />
+                      {domain}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="flex justify-between space-x-4">
+                <button
+                  onClick={savePreferences}
+                  className="bg-[#313131] text-white px-6 py-2 rounded-lg hover:bg-[#4a4a4a] transition w-full"
+                >
+                  Save Preferences
+                </button>
+                <button
+                  onClick={() => setShowPreferencesPopup(false)}
+                  className="bg-gray-400 text-white px-6 py-2 rounded-lg hover:bg-gray-500 transition w-full"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
