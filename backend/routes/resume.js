@@ -2,19 +2,18 @@ const express = require("express");
 const router = express.Router();
 const auth = require("../middleware/auth");
 const User = require("../models/User");
+const Job = require("../models/Job");
 const { extractResumeDetails } = require("../utils/ai");
-const multer = require("multer");
 const pdfParse = require("pdf-parse");
 const fs = require("fs").promises;
 const path = require("path");
+const multer = require("multer"); // Added multer import
 
-// Ensure the uploads/resumes directory exists
 const uploadDir = path.join(__dirname, "../../uploads/resumes");
 fs.mkdir(uploadDir, { recursive: true })
   .then(() => console.log("Uploads/resumes directory ready"))
-  .catch(err => console.error("Failed to create uploads/resumes directory:", err));
+  .catch((err) => console.error("Failed to create uploads/resumes directory:", err));
 
-// Multer storage configuration
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     console.log("Multer saving to:", uploadDir);
@@ -60,7 +59,7 @@ router.post("/extract", auth, upload.single("resume"), async (req, res) => {
     }
 
     console.log("Before update - User resumeParsed:", user.resumeParsed);
-    user.resumeFile = resumePath; // Update file path only
+    user.resumeFile = resumePath;
     await user.save();
     console.log("After update - User resumeParsed (unchanged):", user.resumeParsed);
 
@@ -107,6 +106,69 @@ router.get("/download/:userId", auth, async (req, res) => {
     });
   } catch (err) {
     console.error("Error in /download:", err.message, err.stack);
+    res.status(500).json({ msg: "Server error", error: err.message });
+  }
+});
+
+router.post("/analyze", auth, async (req, res) => {
+  if (req.user.userType !== "candidate") {
+    return res.status(403).json({ msg: "Not authorized" });
+  }
+
+  const { jobId, resume } = req.body;
+  if (!jobId || !resume) {
+    return res.status(400).json({ msg: "Missing jobId or resume data" });
+  }
+
+  try {
+    const job = await Job.findById(jobId);
+    if (!job) {
+      return res.status(404).json({ msg: "Job not found" });
+    }
+
+    const pdfBuffer = Buffer.from(resume, "base64");
+    const pdfData = await pdfParse(pdfBuffer);
+    const resumeText = pdfData.text.toLowerCase();
+
+    const jobText = `${job.title} ${job.details} ${job.skills.join(" ")}`.toLowerCase();
+    const jobKeywords = new Set(jobText.split(/\s+/).filter((word) => word.length > 2));
+
+    const resumeKeywords = new Set(resumeText.split(/\s+/).filter((word) => word.length > 2));
+
+    const missingKeywords = [...jobKeywords].filter((keyword) => !resumeKeywords.has(keyword));
+    const matchedKeywords = [...jobKeywords].filter((keyword) => resumeKeywords.has(keyword));
+
+    const feedback = [];
+    if (missingKeywords.length > 0) {
+      feedback.push(
+        `Your resume is missing key terms from the job description: ${missingKeywords.slice(0, 5).join(", ")}${
+          missingKeywords.length > 5 ? " (and more)" : ""
+        }. Consider adding these to align better with the job requirements.`
+      );
+    } else {
+      feedback.push("Great job! Your resume includes all key terms from the job description.");
+    }
+
+    const missingSkills = job.skills.filter((skill) => !resumeText.includes(skill.toLowerCase()));
+    if (missingSkills.length > 0) {
+      feedback.push(
+        `The job requires these skills not found in your resume: ${missingSkills.join(
+          ", "
+        )}. If you have experience with these, add them explicitly.`
+      );
+    }
+
+    const matchScore = Math.round((matchedKeywords.length / jobKeywords.size) * 100);
+
+    res.json({
+      missingKeywords,
+      matchedKeywords,
+      missingSkills,
+      feedback,
+      matchScore,
+    });
+  } catch (err) {
+    console.error("Error in /resume/analyze:", err.message, err.stack);
     res.status(500).json({ msg: "Server error", error: err.message });
   }
 });
