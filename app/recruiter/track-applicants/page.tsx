@@ -3,31 +3,38 @@
 import Navbar from "@/components/navbar";
 import { CircleUser, FileText, MoreHorizontal, MessageSquare } from "lucide-react";
 import { useState, useEffect } from "react";
+import toast from "react-hot-toast";
+import { useRouter } from "next/navigation";
 
 export default function TrackApplicants() {
   const [applications, setApplications] = useState([]);
   const [selectedApplicant, setSelectedApplicant] = useState(null);
   const [analysis, setAnalysis] = useState(null);
   const [statusUpdates, setStatusUpdates] = useState({});
+  const router = useRouter();
 
   useEffect(() => {
     const fetchApplications = async () => {
       const token = localStorage.getItem("token");
-      if (!token) return;
+      if (!token) {
+        router.push("/");
+        return;
+      }
       try {
         const res = await fetch("http://localhost:5000/api/applications", {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok) throw new Error("Failed to fetch applications");
         const data = await res.json();
-        console.log("Fetched applications:", data); // Confirm "Not Selected" is excluded
+        console.log("Fetched applications:", data);
         setApplications(data);
       } catch (err) {
         console.error("Error fetching applications:", err);
+        toast.error("Failed to load applicants.");
       }
     };
     fetchApplications();
-  }, []);
+  }, [router]);
 
   const handleStatusChange = (appId, value) => {
     setStatusUpdates((prev) => ({ ...prev, [appId]: value }));
@@ -48,13 +55,8 @@ export default function TrackApplicants() {
       });
 
       if (!res.ok) {
-        let errorData;
-        try {
-          errorData = await res.json();
-          throw new Error(errorData.msg || `Failed to update status (Status: ${res.status})`);
-        } catch (jsonErr) {
-          throw new Error(`Server error: ${res.statusText} (Status: ${res.status})`);
-        }
+        const errorData = await res.json();
+        throw new Error(errorData.msg || `Failed to update status (Status: ${res.status})`);
       }
 
       const data = await res.json();
@@ -65,10 +67,10 @@ export default function TrackApplicants() {
           prev.map((app) => (app._id === appId ? { ...app, status: newStatus } : app))
         );
       }
-      showToast("Status updated successfully!");
+      toast.success("Status updated successfully!");
     } catch (err) {
       console.error("Error updating status:", err);
-      alert(`Error: ${err.message}`);
+      toast.error(`Error: ${err.message}`);
     }
   };
 
@@ -77,22 +79,32 @@ export default function TrackApplicants() {
   };
 
   const handleAnalyze = async (app) => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      toast.error("No token found. Please log in again.");
+      router.push("/");
+      return;
+    }
     try {
+      console.log("Analyzing:", { resumeText: app.resumeText, jobId: app.job._id });
       const res = await fetch("http://localhost:5000/api/applications/analyze", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ resumeText: app.resumeText, jobId: app.job._id }),
       });
-      if (!res.ok) throw new Error("Analysis failed");
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(`Analysis failed: ${res.status} - ${errorText}`);
+      }
       const analysisData = await res.json();
       setAnalysis(analysisData);
       setSelectedApplicant(app);
     } catch (err) {
       console.error("Error analyzing:", err);
-      alert("Error: " + err.message);
+      toast.error(err.message || "Failed to analyze application.");
     }
   };
 
@@ -104,7 +116,7 @@ export default function TrackApplicants() {
   const handleDownloadResume = async (userId) => {
     const token = localStorage.getItem("token");
     if (!token) {
-      alert("Please log in to download the resume.");
+      toast.error("Please log in to download the resume.");
       return;
     }
 
@@ -128,7 +140,7 @@ export default function TrackApplicants() {
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error("Download error:", err);
-      alert("Error: " + err.message);
+      toast.error("Error: " + err.message);
     }
   };
 
@@ -140,47 +152,51 @@ export default function TrackApplicants() {
           <h1 className="text-3xl font-semibold text-center uppercase text-white">Track Applicants</h1>
         </div>
         <div className="space-y-6">
-          {applications.map((app) => (
-            <div key={app._id} className="bg-[#d9d9d9] p-4 rounded-lg shadow-md">
-              <div className="flex items-center">
-                <CircleUser className="h-10 w-10 text-[#313131] mr-4" />
-                <div className="flex-1 text-[#313131]">
-                  <p className="font-bold text-lg">{app.candidate.username}</p>
-                  <p className="text-sm">{app.job.title}</p>
-                  <p className="text-xs">Current Status: {app.status}</p>
+          {applications.length > 0 ? (
+            applications.map((app) => (
+              <div key={app._id} className="bg-[#d9d9d9] p-4 rounded-lg shadow-md">
+                <div className="flex items-center">
+                  <CircleUser className="h-10 w-10 text-[#313131] mr-4" />
+                  <div className="flex-1 text-[#313131]">
+                    <p className="font-bold text-lg">{app.candidate.username}</p>
+                    <p className="text-sm">{app.job.title}</p>
+                    <p className="text-xs">Current Status: {app.status}</p>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <button onClick={() => handleChat(app)} className="p-2 rounded-full bg-[#313131] hover:bg-[#4a4a4a] transition" title="Chat">
+                      <MessageSquare className="h-5 w-5 text-white" />
+                    </button>
+                    <button onClick={() => handleAnalyze(app)} className="p-2 rounded-full bg-[#313131] hover:bg-[#4a4a4a] transition" title="Analyze with AI">
+                      <MoreHorizontal className="h-5 w-5 text-white" />
+                    </button>
+                    <button onClick={() => handleDetails(app)} className="p-2 rounded-full bg-[#313131] hover:bg-[#4a4a4a] transition" title="Details">
+                      <FileText className="h-5 w-5 text-white" />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <button onClick={() => handleChat(app)} className="p-2 rounded-full bg-[#313131] hover:bg-[#4a4a4a] transition" title="Chat">
-                    <MessageSquare className="h-5 w-5 text-white" />
-                  </button>
-                  <button onClick={() => handleAnalyze(app)} className="p-2 rounded-full bg-[#313131] hover:bg-[#4a4a4a] transition" title="Analyze with AI">
-                    <MoreHorizontal className="h-5 w-5 text-white" />
-                  </button>
-                  <button onClick={() => handleDetails(app)} className="p-2 rounded-full bg-[#313131] hover:bg-[#4a4a4a] transition" title="Details">
-                    <FileText className="h-5 w-5 text-white" />
+                <div className="mt-4">
+                  <select
+                    value={statusUpdates[app._id] || app.status}
+                    onChange={(e) => handleStatusChange(app._id, e.target.value)}
+                    className="w-full p-2 mb-2 border rounded text-[#313131]"
+                  >
+                    <option value="Applied">Applied</option>
+                    <option value="Under Review">Under Review</option>
+                    <option value="Selected">Selected</option>
+                    <option value="Not Selected">Not Selected</option>
+                  </select>
+                  <button
+                    onClick={() => handleSubmitStatus(app._id)}
+                    className="w-full bg-[#313131] text-white py-2 rounded hover:bg-[#4a4a4a] transition"
+                  >
+                    Submit
                   </button>
                 </div>
               </div>
-              <div className="mt-4">
-                <select
-                  value={statusUpdates[app._id] || app.status}
-                  onChange={(e) => handleStatusChange(app._id, e.target.value)}
-                  className="w-full p-2 mb-2 border rounded text-[#313131]"
-                >
-                  <option value="Applied">Applied</option>
-                  <option value="Under Review">Under Review</option>
-                  <option value="Selected">Selected</option>
-                  <option value="Not Selected">Not Selected</option>
-                </select>
-                <button
-                  onClick={() => handleSubmitStatus(app._id)}
-                  className="w-full bg-[#313131] text-white py-2 rounded hover:bg-[#4a4a4a] transition"
-                >
-                  Submit
-                </button>
-              </div>
-            </div>
-          ))}
+            ))
+          ) : (
+            <p className="text-center text-white">No applicants found.</p>
+          )}
         </div>
       </main>
 
@@ -193,6 +209,8 @@ export default function TrackApplicants() {
                 <h3 className="font-bold text-[#313131]">AI Analysis</h3>
                 <p><strong>Score:</strong> {analysis.score}%</p>
                 <p><strong>Feedback:</strong> {analysis.feedback}</p>
+                <p><strong>Matched Skills:</strong> {analysis.matchedSkills.join(", ") || "None"}</p>
+                <p><strong>Missing Skills:</strong> {analysis.missingSkills.join(", ") || "None"}</p>
               </div>
             ) : (
               <>

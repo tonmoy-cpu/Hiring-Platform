@@ -8,26 +8,27 @@ export default function Profile() {
   const [editMode, setEditMode] = useState(false);
   const [formData, setFormData] = useState({});
 
+  const fetchProfile = async () => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      console.log("No token found");
+      return;
+    }
+    try {
+      const res = await fetch("http://localhost:5000/api/auth/profile", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(`Failed to fetch profile: ${res.status}`);
+      const data = await res.json();
+      console.log("Profile fetched:", data);
+      setProfile(data);
+      setFormData(data.resumeParsed || { contact: {}, skills: [], experience: [], education: [] });
+    } catch (err) {
+      console.error("Error fetching profile:", err.message);
+    }
+  };
+
   useEffect(() => {
-    const fetchProfile = async () => {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        console.log("No token found");
-        return;
-      }
-      try {
-        const res = await fetch("http://localhost:5000/api/auth/profile", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) throw new Error(`Failed to fetch profile: ${res.status}`);
-        const data = await res.json();
-        console.log("Profile fetched:", data);
-        setProfile(data);
-        setFormData(data.resumeParsed || { contact: {}, skills: [], experience: [], education: [] });
-      } catch (err) {
-        console.error("Error fetching profile:", err.message);
-      }
-    };
     fetchProfile();
   }, []);
 
@@ -42,9 +43,9 @@ export default function Profile() {
   const handleArrayChange = (section, index, value) => {
     const updated = { ...formData };
     if (section === "skills") {
-      updated.skills[index] = value; // Directly update the string
+      updated.skills[index] = value;
     } else {
-      updated[section][index] = { ...updated[section][index], ...value }; // For objects (experience, education)
+      updated[section][index] = { ...updated[section][index], ...value };
     }
     setFormData(updated);
   };
@@ -70,6 +71,7 @@ export default function Profile() {
   const handleSave = async () => {
     const token = localStorage.getItem("token");
     try {
+      console.log("Saving profile with formData:", formData);
       const res = await fetch("http://localhost:5000/api/auth/profile", {
         method: "PUT",
         headers: {
@@ -78,12 +80,16 @@ export default function Profile() {
         },
         body: JSON.stringify({ resumeParsed: formData }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.msg || "Failed to update profile");
-
-      setProfile({ ...profile, resumeParsed: formData });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.msg || "Failed to update profile");
+      }
+      const updatedProfile = await res.json();
+      console.log("Profile update response:", updatedProfile);
+      setProfile(updatedProfile);
       setEditMode(false);
       showToast("Profile updated successfully!");
+      await fetchProfile();
     } catch (err) {
       console.error("Error updating profile:", err);
       alert("Error: " + err.message);
@@ -100,7 +106,6 @@ export default function Profile() {
           <h1 className="text-3xl font-semibold text-center uppercase text-white">Profile Details</h1>
         </div>
         <div className="bg-[#d9d9d9] p-8 rounded-lg shadow-md">
-          {/* Profile Photo */}
           <div className="flex justify-center mb-6">
             <img
               src={`http://localhost:5000${profile.profilePic}`}
@@ -109,15 +114,11 @@ export default function Profile() {
               onError={(e) => (e.target.src = "/default.jpg")}
             />
           </div>
-
-          {/* Basic Info */}
           <div className="text-center mb-6">
             <h2 className="text-2xl font-bold text-[#313131]">{profile.username}</h2>
             <p className="text-[#313131]">{profile.email}</p>
             <p className="text-sm text-gray-600 capitalize">{profile.userType}</p>
           </div>
-
-          {/* Resume Details */}
           {profile.resumeParsed ? (
             editMode ? (
               <div className="mt-4">
@@ -143,7 +144,6 @@ export default function Profile() {
                   className="input-field mb-2"
                   placeholder="Phone"
                 />
-
                 <h3 className="font-bold text-[#313131] text-lg mt-4 mb-2">Skills</h3>
                 {formData.skills?.map((skill, i) => (
                   <div key={i} className="flex items-center mb-2">
@@ -167,7 +167,6 @@ export default function Profile() {
                 >
                   Add Skill
                 </button>
-
                 <h3 className="font-bold text-[#313131] text-lg mt-4 mb-2">Experience</h3>
                 {formData.experience?.map((exp, i) => (
                   <div key={i} className="mb-4 border-b pb-2">
@@ -206,7 +205,6 @@ export default function Profile() {
                 >
                   Add Experience
                 </button>
-
                 <h3 className="font-bold text-[#313131] text-lg mt-4 mb-2">Education</h3>
                 {formData.education?.map((edu, i) => (
                   <div key={i} className="mb-4 border-b pb-2">
@@ -245,7 +243,6 @@ export default function Profile() {
                 >
                   Add Education
                 </button>
-
                 <div className="flex justify-center mt-6 space-x-4">
                   <button
                     onClick={() => setEditMode(false)}

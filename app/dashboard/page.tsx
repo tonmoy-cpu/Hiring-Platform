@@ -4,7 +4,7 @@ import Navbar from "@/components/navbar";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import { skillOptions, domainOptions } from "@/lib/utils"; // Import centralized lists
+import { skillOptions, domainOptions } from "@/lib/utils";
 
 export default function Dashboard() {
   const [jobs, setJobs] = useState([]);
@@ -20,100 +20,63 @@ export default function Dashboard() {
   const [hasPreferences, setHasPreferences] = useState(false);
   const router = useRouter();
 
-  useEffect(() => {
-    const fetchData = async () => {
-      const token = localStorage.getItem("token");
-      console.log("Token retrieved:", token);
-      if (!token) {
-        console.log("No token found, redirecting to login");
+  const fetchData = async () => {
+    const token = localStorage.getItem("token");
+    console.log("Token retrieved:", token);
+    if (!token) {
+      console.log("No token found, redirecting to login");
+      router.push("/");
+      return;
+    }
+    try {
+      const [profileRes, jobsRes, appsRes] = await Promise.all([
+        fetch("http://localhost:5000/api/auth/profile", {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch("http://localhost:5000/api/jobs", {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch("http://localhost:5000/api/applications", {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
+
+      if (!profileRes.ok) {
+        const errorText = await profileRes.text();
+        throw new Error(`Profile fetch failed with status: ${profileRes.status} - ${errorText}`);
+      }
+      if (!jobsRes.ok) {
+        const errorText = await jobsRes.text();
+        throw new Error(`Jobs fetch failed with status: ${jobsRes.status} - ${errorText}`);
+      }
+      if (!appsRes.ok) {
+        const errorText = await appsRes.text();
+        throw new Error(`Applications fetch failed with status: ${appsRes.status} - ${errorText}`);
+      }
+
+      const profile = await profileRes.json();
+      const jobsData = await jobsRes.json();
+      const appsData = await appsRes.json();
+
+      setUserSkills(profile.resumeParsed?.skills || []);
+      setPreferredSkills(profile.preferredSkills || []);
+      setPreferredDomains(profile.preferredDomains || []);
+      setHasPreferences(profile.preferredSkills?.length > 0 || profile.preferredDomains?.length > 0);
+      setJobs(jobsData);
+      setAppliedJobs(appsData.map((app) => app.job._id));
+    } catch (err) {
+      console.error("Error fetching data:", err);
+      if (err.message.includes("401")) {
+        toast.error("Session expired or invalid token. Please log in again.");
+        localStorage.removeItem("token");
         router.push("/");
-        return;
+      } else {
+        toast.error("Failed to load dashboard data: " + err.message);
       }
-      try {
-        const [profileRes, jobsRes, appsRes] = await Promise.all([
-          fetch("http://localhost:5000/api/auth/profile", {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          fetch("http://localhost:5000/api/jobs", {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          fetch("http://localhost:5000/api/applications", {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-        ]);
+    }
+  };
 
-        if (!profileRes.ok) {
-          const errorText = await profileRes.text();
-          throw new Error(
-            `Profile fetch failed with status: ${profileRes.status} - ${errorText}`
-          );
-        }
-        if (!jobsRes.ok) {
-          const errorText = await jobsRes.text();
-          throw new Error(
-            `Jobs fetch failed with status: ${jobsRes.status} - ${errorText}`
-          );
-        }
-        if (!appsRes.ok) {
-          const errorText = await appsRes.text();
-          throw new Error(
-            `Applications fetch failed with status: ${appsRes.status} - ${errorText}`
-          );
-        }
-
-        const profile = await profileRes.json();
-        const jobsData = await jobsRes.json();
-        const appsData = await appsRes.json();
-
-        setUserSkills(profile.resumeParsed?.skills || []);
-        setPreferredSkills(profile.preferredSkills || []);
-        setPreferredDomains(profile.preferredDomains || []);
-        setHasPreferences(
-          profile.preferredSkills?.length > 0 || profile.preferredDomains?.length > 0
-        );
-        setJobs(jobsData);
-        setAppliedJobs(appsData.map((app) => app.job._id));
-
-        // Show preferences popup every login if no preferences are set
-        if (!profile.preferredSkills?.length && !profile.preferredDomains?.length) {
-          toast.custom(
-            (t) => (
-              <div
-                className="bg-[#313131] text-white p-4 rounded-lg shadow-lg flex items-center justify-between max-w-md"
-                style={{ borderRadius: "8px" }}
-              >
-                <span>
-                  Please add your preferred skills and domains to see relevant jobs!
-                </span>
-                <button
-                  onClick={() => {
-                    console.log("Add Now clicked"); // Debug
-                    setShowPreferencesPopup(true);
-                    toast.dismiss(t.id); // Dismiss the toast after clicking
-                  }}
-                  className="bg-[#4a4a4a] text-white px-3 py-1 rounded-lg hover:bg-[#5a5a5a] transition ml-4"
-                >
-                  Add Now
-                </button>
-              </div>
-            ),
-            {
-              duration: 5000,
-              position: "top-right",
-            }
-          );
-        }
-      } catch (err) {
-        console.error("Error fetching data:", err);
-        if (err.message.includes("401")) {
-          toast.error("Session expired or invalid token. Please log in again.");
-          localStorage.removeItem("token");
-          router.push("/");
-        } else {
-          toast.error("Failed to load dashboard data: " + err.message);
-        }
-      }
-    };
+  useEffect(() => {
     fetchData();
   }, [router]);
 
@@ -150,9 +113,7 @@ export default function Dashboard() {
       });
       if (!res.ok) {
         const errorText = await res.text();
-        throw new Error(
-          `Failed to save preferences with status: ${res.status} - ${errorText}`
-        );
+        throw new Error(`Failed to save preferences with status: ${res.status} - ${errorText}`);
       }
       setHasPreferences(true);
       setShowPreferencesPopup(false);
@@ -161,9 +122,7 @@ export default function Dashboard() {
       });
       if (!jobsRes.ok) {
         const errorText = await jobsRes.text();
-        throw new Error(
-          `Jobs refresh failed with status: ${jobsRes.status} - ${errorText}`
-        );
+        throw new Error(`Jobs refresh failed with status: ${jobsRes.status} - ${errorText}`);
       }
       setJobs(await jobsRes.json());
       toast.success("Preferences saved successfully!");
@@ -201,9 +160,7 @@ export default function Dashboard() {
       });
       if (!extractRes.ok) {
         const errorText = await extractRes.text();
-        throw new Error(
-          `Resume extraction failed with status: ${extractRes.status} - ${errorText}`
-        );
+        throw new Error(`Resume extraction failed with status: ${extractRes.status} - ${errorText}`);
       }
       const { resumeText } = await extractRes.json();
 
@@ -217,15 +174,14 @@ export default function Dashboard() {
       });
       if (!applyRes.ok) {
         const errorText = await applyRes.text();
-        throw new Error(
-          `Application submission failed with status: ${applyRes.status} - ${errorText}`
-        );
+        throw new Error(`Application submission failed with status: ${applyRes.status} - ${errorText}`);
       }
       setAppliedJobs((prev) => [...prev, jobId]);
       setShowApplyModal(null);
       setResumeFile(null);
       setCoverLetter("");
       toast.success("Application submitted successfully!");
+      await fetchData(); // Refresh data after applying
     } catch (err) {
       console.error("Error applying:", err);
       if (err.message.includes("401")) {
@@ -262,19 +218,19 @@ export default function Dashboard() {
               <div className="text-sm text-[#313131]">
                 <p>{job.details}</p>
                 <p>Skills: {job.skills.join(", ")}</p>
-                <p>Salary: {job.salary || "Not specified"}</p> {/* Display salary */}
+                <p>Salary: {job.salary || "Not specified"}</p>
               </div>
               <div className="mt-4 flex justify-end">
                 <button
                   onClick={() => (job.isApplied ? null : setShowApplyModal(job))}
-                  disabled={job.isApplied}
+                  disabled={job.isApplied || appliedJobs.includes(job._id)}
                   className={`text-sm px-4 py-2 rounded-lg transition duration-200 ${
-                    job.isApplied
+                    job.isApplied || appliedJobs.includes(job._id)
                       ? "bg-gray-400 text-white cursor-not-allowed"
                       : "bg-[#313131] text-white hover:bg-[#4a4a4a]"
                   }`}
                 >
-                  {job.isApplied ? "Applied" : "Apply"}
+                  {job.isApplied || appliedJobs.includes(job._id) ? "Applied" : "Apply"}
                 </button>
               </div>
               {hoveredJob === job && (

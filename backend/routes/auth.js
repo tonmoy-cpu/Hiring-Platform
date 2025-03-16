@@ -161,19 +161,55 @@ router.get("/profile", auth, async (req, res) => {
   }
 });
 
+router.get("/profile/:userId", auth, async (req, res) => {
+  try {
+    if (req.user.userType !== "recruiter") {
+      console.log("Unauthorized access attempt by user:", req.user.id);
+      return res.status(403).json({ msg: "Not authorized" });
+    }
+
+    const user = await User.findById(req.params.userId).select("-password");
+    if (!user) {
+      console.log("User not found for ID:", req.params.userId);
+      return res.status(404).json({ msg: "User not found" });
+    }
+
+    if (user.userType !== "candidate") {
+      console.log("Attempt to access non-candidate profile by recruiter:", req.user.id);
+      return res.status(403).json({ msg: "Can only view candidate profiles" });
+    }
+
+    user.profilePic = user.profilePic || "/uploads/default.jpg";
+    console.log("Returning candidate profile for ID:", req.params.userId, { username: user.username });
+    res.json(user);
+  } catch (err) {
+    console.error("Error in /profile/:userId:", err.message, err.stack);
+    res.status(500).json({ msg: "Server error", error: err.message });
+  }
+});
+
 router.put("/profile", auth, async (req, res) => {
-  const { resumeParsed } = req.body;
+  const { resumeParsed, preferredSkills, preferredDomains } = req.body;
   try {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ msg: "User not found" });
 
-    user.resumeParsed = resumeParsed || user.resumeParsed;
-    await user.save();
+    console.log("Before update - User resumeParsed:", user.resumeParsed);
+    console.log("Received resumeParsed:", resumeParsed);
 
-    user.profilePic = user.profilePic || "/uploads/default.jpg";
-    res.json(user);
+    if (resumeParsed) {
+      user.resumeParsed = resumeParsed; // Directly assign to preserve manual edits
+    }
+    if (preferredSkills) user.preferredSkills = preferredSkills;
+    if (preferredDomains) user.preferredDomains = preferredDomains;
+
+    await user.save();
+    const updatedUser = await User.findById(req.user.id).select("-password");
+    console.log("After update - User resumeParsed:", updatedUser.resumeParsed);
+
+    res.json(updatedUser);
   } catch (err) {
-    console.error("Error in PUT /profile:", err.message, err.stack);
+    console.error("Error updating profile:", err.message, err.stack);
     res.status(500).json({ msg: "Server error", error: err.message });
   }
 });
@@ -191,8 +227,8 @@ router.put("/preferences", auth, async (req, res) => {
     await user.save();
     res.json(user);
   } catch (err) {
-    console.error("Error in /preferences:", err);
-    res.status(500).json({ msg: "Server error" });
+    console.error("Error in /preferences:", err.message, err.stack);
+    res.status(500).json({ msg: "Server error", error: err.message });
   }
 });
 

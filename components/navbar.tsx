@@ -6,46 +6,36 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 
-export default function Navbar({ userType = "candidate" }) {
+interface NavbarProps {
+  userType?: "candidate" | "recruiter";
+}
+
+export default function Navbar({ userType = "candidate" }: NavbarProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [profilePic, setProfilePic] = useState("/uploads/default.jpg");
+  const [profilePic, setProfilePic] = useState<string>("/uploads/default.jpg");
   const [imageError, setImageError] = useState(false);
   const router = useRouter();
-
-  // Debug: Log userType
-  console.log("Navbar userType:", userType);
 
   useEffect(() => {
     const fetchProfile = async () => {
       const token = localStorage.getItem("token");
-      console.log("Navbar token retrieved:", token);
       if (!token) {
-        console.log("No token found in Navbar, redirecting to login");
         router.push("/");
         return;
       }
-
       try {
         const res = await fetch("http://localhost:5000/api/auth/profile", {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (!res.ok) {
-          const errorText = await res.text();
-          throw new Error(`Profile fetch failed with status: ${res.status} - ${errorText}`);
-        }
+        if (!res.ok) throw new Error("Failed to fetch profile");
         const data = await res.json();
-        console.log("Navbar profile data:", data);
         setProfilePic(data.profilePic || "/uploads/default.jpg");
       } catch (err) {
-        console.error("Error fetching profile in Navbar:", err.message);
+        toast.error(`Failed to load profile: ${err.message}`);
         if (err.message.includes("401")) {
-          toast.error("Session expired or invalid token. Please log in again.");
           localStorage.removeItem("token");
           router.push("/");
-        } else {
-          setProfilePic("/uploads/default.jpg");
-          toast.error("Failed to load profile picture.");
         }
       }
     };
@@ -53,20 +43,20 @@ export default function Navbar({ userType = "candidate" }) {
   }, [router]);
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    router.push("/");
-    setIsMenuOpen(false);
-    setIsProfileOpen(false);
+    if (confirm("Are you sure you want to logout?")) {
+      localStorage.removeItem("token");
+      router.push("/");
+      setIsMenuOpen(false);
+      setIsProfileOpen(false);
+    }
   };
 
-  const handleImageError = (e) => {
+  const handleImageError = (e: React.SyntheticEvent<HTMLImageElement>) => {
     if (!imageError) {
-      console.log("Initial image failed to load:", e.target.src);
-      e.target.src = "/default.jpg";
+      e.currentTarget.src = "/default.jpg";
       setImageError(true);
     } else {
-      console.log("Fallback image also failed, using remote placeholder:", e.target.src);
-      e.target.src = "https://via.placeholder.com/40";
+      e.currentTarget.src = "https://via.placeholder.com/40";
     }
   };
 
@@ -87,7 +77,7 @@ export default function Navbar({ userType = "candidate" }) {
       ];
 
   return (
-    <nav className="bg-[#313131] p-4 flex items-center justify-between shadow-md relative">
+    <nav className="bg-[#313131] p-4 flex items-center justify-between shadow-md relative z-30">
       <div className="flex items-center">
         <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="focus:outline-none mr-4">
           <Menu className="h-6 w-6 text-white" />
@@ -115,7 +105,10 @@ export default function Navbar({ userType = "candidate" }) {
             >
               Profile Details
             </Link>
-            <button onClick={handleLogout} className="nav-link text-white hover:text-gray-300 text-left">
+            <button
+              onClick={handleLogout}
+              className="nav-link text-white hover:text-gray-300 text-left"
+            >
               Logout
             </button>
           </div>
@@ -152,7 +145,7 @@ export default function Navbar({ userType = "candidate" }) {
           onClick={() => setIsProfileOpen(!isProfileOpen)}
         />
         {isProfileOpen && (
-          <div className="absolute right-0 mt-2 w-48 dropdown-menu rounded-md shadow-lg z-10">
+          <div className="absolute right-0 mt-2 w-48 dropdown-menu rounded-md shadow-lg z-30">
             <Link
               href="/profile"
               className="dropdown-item block text-white hover:bg-[#4a4a4a]"

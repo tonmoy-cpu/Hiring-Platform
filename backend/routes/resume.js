@@ -23,7 +23,7 @@ const storage = multer.diskStorage({
   filename: (req, file, cb) => {
     const filename = `${Date.now()}-${file.originalname}`;
     console.log("Generated filename:", filename);
-    cb(null, filename); // Keep original filename with extension
+    cb(null, filename);
   },
 });
 const upload = multer({ storage });
@@ -42,29 +42,28 @@ router.post("/extract", auth, upload.single("resume"), async (req, res) => {
     const pdfPath = req.file.path;
     console.log("Processing file at:", pdfPath);
 
-    // Read and parse the PDF
     const dataBuffer = await fs.readFile(pdfPath);
     console.log("PDF read successfully, parsing...");
     const pdfData = await pdfParse(dataBuffer);
     const resumeText = pdfData.text;
 
-    // Extract resume details
     const parsedData = await extractResumeDetails(resumeText);
     console.log("Resume parsed:", parsedData);
 
-    // Define the final resume path
     const resumePath = `/uploads/resumes/${req.file.filename}`;
     console.log("Resume stored at:", resumePath);
 
-    // Update user with parsed data and resume path
-    const user = await User.findByIdAndUpdate(
-      req.user.id,
-      { resumeParsed: parsedData, resumeFile: resumePath },
-      { new: true }
-    );
-    console.log("User updated with resume data:", user.email);
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      console.log("User not found:", req.user.id);
+      return res.status(404).json({ msg: "User not found" });
+    }
 
-    // Send response
+    console.log("Before update - User resumeParsed:", user.resumeParsed);
+    user.resumeFile = resumePath; // Update file path only
+    await user.save();
+    console.log("After update - User resumeParsed (unchanged):", user.resumeParsed);
+
     res.json({ parsedData, resumeText });
   } catch (err) {
     console.error("Error in /extract:", err.message, err.stack);
@@ -76,7 +75,6 @@ router.post("/extract", auth, upload.single("resume"), async (req, res) => {
   }
 });
 
-// Download Resume Endpoint
 router.get("/download/:userId", auth, async (req, res) => {
   if (req.user.userType !== "recruiter") {
     console.log("Unauthorized download attempt by user:", req.user.id);
@@ -93,14 +91,12 @@ router.get("/download/:userId", auth, async (req, res) => {
     const filePath = path.join(__dirname, "../..", user.resumeFile);
     console.log("Serving resume from:", filePath);
 
-    // Check if file exists
     const fileExists = await fs.access(filePath).then(() => true).catch(() => false);
     if (!fileExists) {
       console.log("File not found on disk:", filePath);
       return res.status(404).json({ msg: "Resume file not found on server" });
     }
 
-    // Serve the file with download headers
     res.download(filePath, path.basename(user.resumeFile), (err) => {
       if (err) {
         console.error("Error serving file:", err.message);

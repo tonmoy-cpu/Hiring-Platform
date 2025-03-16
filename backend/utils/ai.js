@@ -1,4 +1,5 @@
 const { HfInference } = require("@huggingface/inference");
+const User = require("../models/User");
 
 const hf = new HfInference(process.env.HF_API_KEY);
 
@@ -40,12 +41,10 @@ async function extractResumeDetails(resumeText) {
       phone: resumeText.match(/\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/)?.[0] || "N/A",
     };
 
-    // Extract name from AI result or use heuristic
     const nameEntity = contactResult.find((e) => e.entity_group === "PER");
     if (nameEntity) {
       contact.name = nameEntity.word;
     } else {
-      // Heuristic: First non-empty line or line before email/phone
       for (let i = 0; i < Math.min(5, lines.length); i++) {
         if (
           lines[i].length > 2 &&
@@ -58,7 +57,6 @@ async function extractResumeDetails(resumeText) {
       }
     }
 
-    // Skills Extraction (AI + Keyword Matching)
     const skillsFromAI = await hf
       .tokenClassification({
         model: "dslim/bert-base-NER",
@@ -75,9 +73,8 @@ async function extractResumeDetails(resumeText) {
       .map((skill) => skill.trim())
       .filter((skill) => commonSkills.includes(skill) || skill.length > 2);
 
-    const skills = [...new Set([...skillsFromAI, ...skillsFromText])]; // Remove duplicates
+    const skills = [...new Set([...skillsFromAI, ...skillsFromText])];
 
-    // Work Experience Extraction
     const experience = [];
     const expKeywords = [
       "experience",
@@ -101,7 +98,6 @@ async function extractResumeDetails(resumeText) {
         continue;
       }
       if (expSection) {
-        // Look for job title/company or date patterns
         const dateMatch = line.match(/(\d{4}\s*[-–—]\s*\d{4}|\d{4}\s*-\s*present)/i);
         if (dateMatch) {
           if (currentExp) experience.push(currentExp);
@@ -115,7 +111,6 @@ async function extractResumeDetails(resumeText) {
     }
     if (currentExp) experience.push(currentExp);
 
-    // Education Extraction
     const education = [];
     const eduKeywords = ["education", "academic", "degree"];
     let eduSection = false;
@@ -158,11 +153,22 @@ async function extractResumeDetails(resumeText) {
   }
 }
 
-async function analyzeResumeAgainstJob(resumeText, job) {
+async function analyzeResumeAgainstJob(resumeText, job, candidateId) {
   try {
-    const jobSkills = job.skills.map((s) => s.toLowerCase()); // Normalize job skills
-    const { skills } = await extractResumeDetails(resumeText);
-    const normalizedSkills = skills.map((s) => s.toLowerCase()); // Normalize resume skills
+    const jobSkills = job.skills.map((s) => s.toLowerCase());
+
+    let normalizedSkills = [];
+    if (candidateId) {
+      const user = await User.findById(candidateId).select("resumeParsed.skills");
+      if (!user) throw new Error("Candidate not found");
+      console.log("Using resumeParsed.skills for analysis:", user.resumeParsed?.skills);
+      normalizedSkills = (user.resumeParsed?.skills || []).map((s) => s.toLowerCase());
+    } else {
+      console.log("No candidateId provided, extracting skills from resumeText");
+      const { skills } = await extractResumeDetails(resumeText);
+      normalizedSkills = skills.map((s) => s.toLowerCase());
+    }
+
     const matchedSkills = normalizedSkills.filter((skill) => jobSkills.includes(skill));
     const missingSkills = jobSkills.filter((s) => !matchedSkills.includes(s));
 
@@ -175,9 +181,11 @@ async function analyzeResumeAgainstJob(resumeText, job) {
       ? `Missing skills: ${missingSkills.join(", ")}. Consider adding relevant projects.`
       : "Strong match! Your skills align well with this job.";
 
+    console.log("Analysis result:", { score: totalScore, feedback, matchedSkills, missingSkills });
+
     return { score: totalScore, feedback, matchedSkills, missingSkills };
   } catch (err) {
-    console.error("Error in analyzeResumeAgainstJob:", err);
+    console.error("Error in analyzeResumeAgainstJob:", err.message, err.stack);
     return {
       score: 0,
       feedback: "Error analyzing resume. Please ensure the resume is valid.",
