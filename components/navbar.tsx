@@ -13,10 +13,13 @@ export default function Navbar({ userType = "candidate" }) {
   const [imageError, setImageError] = useState(false);
   const router = useRouter();
 
+  // Debug: Log userType
+  console.log("Navbar userType:", userType);
+
   useEffect(() => {
     const fetchProfile = async () => {
       const token = localStorage.getItem("token");
-      console.log("Navbar token retrieved:", token); // Debug
+      console.log("Navbar token retrieved:", token);
       if (!token) {
         console.log("No token found in Navbar, redirecting to login");
         router.push("/");
@@ -69,7 +72,7 @@ export default function Navbar({ userType = "candidate" }) {
 
   const menuOptions = userType === "recruiter"
     ? [
-        { label: "Dashboard", href: "/dashboard/recruiter" },
+        { label: "Dashboard", href: "/recruiter/dashboard" },
         { label: "Post Job", href: "/recruiter/post-job" },
         { label: "Track Applicants", href: "/recruiter/track-applicants" },
         { label: "Contact", href: "/contact" },
@@ -127,7 +130,7 @@ export default function Navbar({ userType = "candidate" }) {
 
       <div className="flex-1 flex justify-center space-x-6">
         <Link
-          href={userType === "recruiter" ? "/dashboard/recruiter" : "/dashboard"}
+          href={userType === "recruiter" ? "/recruiter/dashboard" : "/dashboard"}
           className="nav-link text-white hover:text-gray-300"
         >
           Home
