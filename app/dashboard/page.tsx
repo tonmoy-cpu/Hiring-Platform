@@ -4,7 +4,7 @@ import Navbar from "@/components/navbar";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import { skillOptions, domainOptions } from "@/lib/utils"; // Import centralized lists
+import { skillOptions, domainOptions } from "@/lib/utils";
 
 export default function Dashboard() {
   const [jobs, setJobs] = useState([]);
@@ -18,15 +18,13 @@ export default function Dashboard() {
   const [resumeFile, setResumeFile] = useState(null);
   const [coverLetter, setCoverLetter] = useState("");
   const [hasPreferences, setHasPreferences] = useState(false);
-  const [toastShown, setToastShown] = useState(false); // Prevent repeated toasts
+  const [toastShown, setToastShown] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
     const fetchData = async () => {
       const token = localStorage.getItem("token");
-      console.log("Token retrieved:", token);
       if (!token) {
-        console.log("No token found, redirecting to login");
         router.push("/");
         return;
       }
@@ -58,9 +56,7 @@ export default function Dashboard() {
         setJobs(jobsData);
         setAppliedJobs(appsData.map((app) => app.job._id));
 
-        // Show preferences popup every login if no preferences are set
         if (!profile.preferredSkills?.length && !profile.preferredDomains?.length && !toastShown) {
-          console.log("Triggering preferences toast");
           toast.custom(
             (t) => (
               <div
@@ -70,7 +66,6 @@ export default function Dashboard() {
                 <span>Please add your preferred skills and domains to see relevant jobs!</span>
                 <button
                   onClick={() => {
-                    console.log("Add Now clicked");
                     setShowPreferencesPopup(true);
                     toast.dismiss(t.id);
                   }}
@@ -88,13 +83,10 @@ export default function Dashboard() {
           setToastShown(true);
         }
       } catch (err) {
-        console.error("Error fetching data:", err);
+        toast.error("Failed to load dashboard data: " + err.message);
         if (err.message.includes("401")) {
-          toast.error("Session expired or invalid token. Please log in again.");
           localStorage.removeItem("token");
           router.push("/");
-        } else {
-          toast.error("Failed to load dashboard data: " + err.message);
         }
       }
     };
@@ -142,13 +134,10 @@ export default function Dashboard() {
       setJobs(await jobsRes.json());
       toast.success("Preferences saved successfully!");
     } catch (err) {
-      console.error("Error saving preferences:", err);
+      toast.error("Error saving preferences: " + err.message);
       if (err.message.includes("401")) {
-        toast.error("Session expired or invalid token. Please log in again.");
         localStorage.removeItem("token");
         router.push("/");
-      } else {
-        toast.error("Error saving preferences: " + err.message);
       }
     }
   };
@@ -191,13 +180,10 @@ export default function Dashboard() {
       setCoverLetter("");
       toast.success("Application submitted successfully!");
     } catch (err) {
-      console.error("Error applying:", err);
+      toast.error("Error applying: " + err.message);
       if (err.message.includes("401")) {
-        toast.error("Session expired or invalid token. Please log in again.");
         localStorage.removeItem("token");
         router.push("/");
-      } else {
-        toast.error("Error applying: " + err.message);
       }
     }
   };
