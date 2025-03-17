@@ -5,10 +5,12 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { skillOptions, domainOptions } from "@/lib/utils";
+import io from "socket.io-client";
 
 export default function Dashboard() {
   const [jobs, setJobs] = useState([]);
   const [appliedJobs, setAppliedJobs] = useState([]);
+  const [applications, setApplications] = useState([]); // New state for applications
   const [userSkills, setUserSkills] = useState([]);
   const [preferredSkills, setPreferredSkills] = useState([]);
   const [preferredDomains, setPreferredDomains] = useState([]);
@@ -19,15 +21,25 @@ export default function Dashboard() {
   const [coverLetter, setCoverLetter] = useState("");
   const [hasPreferences, setHasPreferences] = useState(false);
   const [toastShown, setToastShown] = useState(false);
+  const [showChatModal, setShowChatModal] = useState(null); // Chat modal state
+  const [chatMessages, setChatMessages] = useState([]); // Chat messages state
+  const [newMessage, setNewMessage] = useState(""); // New message input
+  const [attachment, setAttachment] = useState(null); // Attachment input
+  const [notifications, setNotifications] = useState([]); // Notifications state
+  const [socket, setSocket] = useState(null); // Socket.IO instance
   const router = useRouter();
 
   useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      router.push("/");
+      return;
+    }
+
+    const socketInstance = io("http://localhost:5000", { auth: { token } });
+    setSocket(socketInstance);
+
     const fetchData = async () => {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        router.push("/");
-        return;
-      }
       try {
         const [profileRes, jobsRes, appsRes] = await Promise.all([
           fetch("http://localhost:5000/api/auth/profile", {
@@ -55,6 +67,7 @@ export default function Dashboard() {
         setHasPreferences(profile.preferredSkills?.length > 0 || profile.preferredDomains?.length > 0);
         setJobs(jobsData);
         setAppliedJobs(appsData.map((app) => app.job._id));
+        setApplications(appsData); // Set applications
 
         if (!profile.preferredSkills?.length && !profile.preferredDomains?.length && !toastShown) {
           toast.custom(
@@ -91,7 +104,27 @@ export default function Dashboard() {
       }
     };
     fetchData();
-  }, [router, toastShown]);
+
+    socketInstance.on("connect", () => console.log("Socket connected"));
+    socketInstance.on("connect_error", (err) => console.error("Socket error:", err));
+    socketInstance.on("message", (message) => {
+      if (showChatModal) setChatMessages((prev) => [...prev, message]);
+    });
+    socketInstance.on("notification", ({ chatId, message }) => {
+      if (message.sender !== localStorage.getItem("userId")) {
+        setNotifications((prev) => [...prev, { chatId, message }]);
+        setTimeout(() => setNotifications((prev) => prev.slice(1)), 5000);
+      }
+    });
+
+    return () => {
+      socketInstance.off("message");
+      socketInstance.off("notification");
+      socketInstance.off("connect");
+      socketInstance.off("connect_error");
+      socketInstance.disconnect();
+    };
+  }, [router, toastShown, showChatModal]);
 
   const getMissingSkills = (job) => {
     return job.skills.filter((skill) => !userSkills.includes(skill));
@@ -174,7 +207,9 @@ export default function Dashboard() {
         body: JSON.stringify({ jobId, resumeText, coverLetter }),
       });
       if (!applyRes.ok) throw new Error(`Application submission failed with status: ${applyRes.status}`);
+      const newApplication = await applyRes.json();
       setAppliedJobs((prev) => [...prev, jobId]);
+      setApplications((prev) => [...prev, newApplication]); // Update applications
       setShowApplyModal(null);
       setResumeFile(null);
       setCoverLetter("");
@@ -188,6 +223,50 @@ export default function Dashboard() {
     }
   };
 
+  const handleChat = async (applicationId) => {
+    const token = localStorage.getItem("token");
+    try {
+      const res = await fetch(`http://localhost:5000/api/chat/${applicationId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to load chat");
+      const chat = await res.json();
+      setShowChatModal(chat);
+      setChatMessages(chat.messages);
+      socket.emit("joinChat", chat._id);
+
+      await fetch(`http://localhost:5000/api/chat/${chat._id}/read`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch (err) {
+      toast.error(`Error loading chat: ${err.message}`);
+    }
+  };
+
+  const sendMessage = async () => {
+    if (!newMessage && !attachment) return;
+    const token = localStorage.getItem("token");
+    const formData = new FormData();
+    if (newMessage) formData.append("content", newMessage);
+    if (attachment) formData.append("attachment", attachment);
+
+    try {
+      const res = await fetch(`http://localhost:5000/api/chat/${showChatModal._id}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      if (!res.ok) throw new Error("Failed to send message");
+      const message = await res.json();
+      socket.emit("sendMessage", { chatId: showChatModal._id, message });
+      setNewMessage("");
+      setAttachment(null);
+    } catch (err) {
+      toast.error(`Error sending message: ${err.message}`);
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-[#373737]">
       <Navbar userType="candidate" />
@@ -198,49 +277,96 @@ export default function Dashboard() {
           </h1>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {jobs.map((job) => (
-            <div
-              key={job._id}
-              className="job-card p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 relative bg-[#d9d9d9]"
-              onMouseEnter={() => setHoveredJob(job)}
-              onMouseLeave={() => setHoveredJob(null)}
-            >
-              <h3 className="font-semibold text-lg mb-2 text-[#313131]">{job.title}</h3>
-              <div className="text-sm text-[#313131]">
-                <p>{job.details}</p>
-                <p>Skills: {job.skills.join(", ")}</p>
-                <p>Salary: {job.salary || "Not specified"}</p>
-              </div>
-              <div className="mt-4 flex justify-end">
-                <button
-                  onClick={() => (job.isApplied ? null : setShowApplyModal(job))}
-                  disabled={job.isApplied}
-                  className={`text-sm px-4 py-2 rounded-lg transition duration-200 ${
-                    job.isApplied
-                      ? "bg-gray-400 text-white cursor-not-allowed"
-                      : "bg-[#313131] text-white hover:bg-[#4a4a4a]"
-                  }`}
-                >
-                  {job.isApplied ? "Applied" : "Apply"}
-                </button>
-              </div>
-              {hoveredJob === job && (
-                <div className="absolute top-0 left-0 w-full bg-[#313131] p-4 rounded-lg shadow-lg z-10">
-                  <h4 className="text-white font-semibold">Missing Skills:</h4>
-                  <ul className="list-disc pl-4 text-white">
-                    {getMissingSkills(job).length ? (
-                      getMissingSkills(job).map((skill) => <li key={skill}>{skill}</li>)
-                    ) : (
-                      <li>None</li>
-                    )}
-                  </ul>
+        {/* Recommended Jobs Section */}
+        <div className="mb-12">
+          <h2 className="text-2xl font-semibold text-white mb-4">Recommended Jobs</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            {jobs.map((job) => (
+              <div
+                key={job._id}
+                className="job-card p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 relative bg-[#d9d9d9]"
+                onMouseEnter={() => setHoveredJob(job)}
+                onMouseLeave={() => setHoveredJob(null)}
+              >
+                <h3 className="font-semibold text-lg mb-2 text-[#313131]">{job.title}</h3>
+                <div className="text-sm text-[#313131]">
+                  <p>{job.details}</p>
+                  <p>Skills: {job.skills.join(", ")}</p>
+                  <p>Salary: {job.salary || "Not specified"}</p>
                 </div>
-              )}
-            </div>
-          ))}
+                <div className="mt-4 flex justify-end">
+                  <button
+                    onClick={() => (appliedJobs.includes(job._id) ? null : setShowApplyModal(job))}
+                    disabled={appliedJobs.includes(job._id)}
+                    className={`text-sm px-4 py-2 rounded-lg transition duration-200 ${
+                      appliedJobs.includes(job._id)
+                        ? "bg-gray-400 text-white cursor-not-allowed"
+                        : "bg-[#313131] text-white hover:bg-[#4a4a4a]"
+                    }`}
+                  >
+                    {appliedJobs.includes(job._id) ? "Applied" : "Apply"}
+                  </button>
+                </div>
+                {hoveredJob === job && (
+                  <div className="absolute top-0 left-0 w-full bg-[#313131] p-4 rounded-lg shadow-lg z-10">
+                    <h4 className="text-white font-semibold">Missing Skills:</h4>
+                    <ul className="list-disc pl-4 text-white">
+                      {getMissingSkills(job).length ? (
+                        getMissingSkills(job).map((skill) => <li key={skill}>{skill}</li>)
+                      ) : (
+                        <li>None</li>
+                      )}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
 
+        {/* My Applications Section */}
+        <div className="mb-12">
+          <h2 className="text-2xl font-semibold text-white mb-4">My Applications</h2>
+          {applications.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+              {applications.map((app) => (
+                <div key={app._id} className="bg-[#d9d9d9] p-4 rounded-lg shadow-md">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[#313131]">
+                      <p className="font-bold text-lg">{app.job.title}</p>
+                      <p className="text-sm">Status: {app.status}</p>
+                      <p className="text-sm">Applied on: {new Date(app.createdAt).toLocaleDateString()}</p>
+                    </div>
+                    <button
+                      onClick={() => handleChat(app._id)}
+                      className="p-2 rounded-full bg-[#313131] hover:bg-[#4a4a4a] transition"
+                      title="Chat with Recruiter"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-5 w-5 text-white"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-center text-white">No applications yet. Apply to jobs above!</p>
+          )}
+        </div>
+
+        {/* Apply Modal */}
         {showApplyModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-[#d9d9d9] p-6 rounded-lg shadow-lg w-full max-w-md">
@@ -284,6 +410,7 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* Preferences Popup */}
         {showPreferencesPopup && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-[#d9d9d9] p-6 rounded-lg shadow-lg w-full max-w-md max-h-[80vh] overflow-y-auto">
@@ -338,6 +465,70 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* Chat Modal */}
+        {showChatModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-[#d9d9d9] p-6 rounded-lg shadow-lg w-full max-w-lg">
+              <h2 className="text-xl font-bold text-[#313131] mb-4">
+                Chat for {applications.find((app) => app._id === showChatModal.application)?.job.title}
+              </h2>
+              <div className="h-64 overflow-y-auto mb-4 bg-white p-2 rounded">
+                {chatMessages.map((msg, index) => (
+                  <div
+                    key={index}
+                    className={`mb-2 ${msg.sender === localStorage.getItem("userId") ? "text-right" : "text-left"}`}
+                  >
+                    <p className="text-[#313131]">{msg.content}</p>
+                    {msg.attachment && (
+                      <a href={`http://localhost:5000${msg.attachment}`} target="_blank" className="text-blue-500">
+                        {msg.attachmentType === "link" ? msg.content : `Attachment (${msg.attachmentType})`}
+                      </a>
+                    )}
+                    <span className="text-xs text-gray-500">{new Date(msg.timestamp).toLocaleTimeString()}</span>
+                  </div>
+                ))}
+              </div>
+              <textarea
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                className="w-full p-2 rounded-lg border border-[#313131] text-[#313131]"
+                placeholder="Type a message..."
+              />
+              <input
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
+                onChange={(e) => setAttachment(e.target.files ? e.target.files[0] : null)}
+                className="mt-2"
+              />
+              <div className="flex justify-end space-x-2 mt-2">
+                <button
+                  onClick={() => setShowChatModal(null)}
+                  className="bg-gray-400 text-white px-4 py-2 rounded hover:bg-gray-500"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={sendMessage}
+                  className="bg-[#313131] text-white px-4 py-2 rounded hover:bg-[#4a4a4a]"
+                >
+                  Send
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Notifications */}
+        {notifications.map((notif, index) => (
+          <div
+            key={index}
+            className="fixed top-4 right-4 bg-[#313131] text-white p-4 rounded-lg shadow-lg z-50"
+          >
+            New message in chat {notif.chatId}
+          </div>
+        ))}
+
+        {/* Navigation Buttons */}
         <div className="mt-8 flex flex-wrap justify-around gap-4">
           <a href="/resume-extraction">
             <button className="bg-[#313131] text-white p-3 rounded-lg hover:bg-[#4a4a4a] transition duration-200 shadow-md w-48">

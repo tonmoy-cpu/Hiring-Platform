@@ -4,10 +4,12 @@ import Navbar from "@/components/navbar";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
+import io from "socket.io-client";
 
 export default function Jobs() {
   const [jobs, setJobs] = useState([]);
-  const [appliedJobs, setAppliedJobs] = useState<string[]>([]);
+  const [appliedJobs, setAppliedJobs] = useState([]);
+  const [applications, setApplications] = useState([]);
   const [filter, setFilter] = useState("");
   const [skillFilter, setSkillFilter] = useState("");
   const [minSalary, setMinSalary] = useState("");
@@ -15,18 +17,28 @@ export default function Jobs() {
   const [statusFilter, setStatusFilter] = useState("open");
   const [showApplyModal, setShowApplyModal] = useState(null);
   const [showAnalyzeModal, setShowAnalyzeModal] = useState(null);
-  const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [showChatModal, setShowChatModal] = useState(null);
+  const [resumeFile, setResumeFile] = useState(null);
   const [coverLetter, setCoverLetter] = useState("");
   const [analysisResult, setAnalysisResult] = useState(null);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState("");
+  const [attachment, setAttachment] = useState(null);
+  const [notifications, setNotifications] = useState([]);
+  const [socket, setSocket] = useState(null);
   const router = useRouter();
 
   useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      router.push("/");
+      return;
+    }
+
+    const socketInstance = io("http://localhost:5000", { auth: { token } });
+    setSocket(socketInstance);
+
     const fetchData = async () => {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        router.push("/");
-        return;
-      }
       try {
         const jobsUrl =
           statusFilter === "all"
@@ -34,13 +46,8 @@ export default function Jobs() {
             : "http://localhost:5000/api/jobs?all=true";
 
         const [jobsRes, appsRes] = await Promise.all([
-          fetch(jobsUrl, {
-            headers: { Authorization: `Bearer ${token}` },
-            cache: "no-store",
-          }),
-          fetch("http://localhost:5000/api/applications", {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
+          fetch(jobsUrl, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }),
+          fetch("http://localhost:5000/api/applications", { headers: { Authorization: `Bearer ${token}` } }),
         ]);
 
         if (!jobsRes.ok) throw new Error(`Jobs fetch failed: ${jobsRes.status}`);
@@ -49,9 +56,9 @@ export default function Jobs() {
         const jobsData = await jobsRes.json();
         const appsData = await appsRes.json();
 
-        console.log("Fetched jobs for /jobs:", jobsData.length, "Jobs:", jobsData.map((j) => j.title));
         setJobs(jobsData);
         setAppliedJobs(appsData.map((app) => app.job._id));
+        setApplications(appsData);
       } catch (err) {
         toast.error(`Failed to load jobs: ${err.message}`);
         if (err.message.includes("401")) {
@@ -61,19 +68,35 @@ export default function Jobs() {
       }
     };
     fetchData();
-  }, [router, statusFilter]);
 
-  const handleApply = async (jobId: string) => {
+    socketInstance.on("connect", () => console.log("Socket connected"));
+    socketInstance.on("connect_error", (err) => console.error("Socket error:", err));
+    socketInstance.on("message", (message) => {
+      if (showChatModal) setChatMessages((prev) => [...prev, message]);
+    });
+    socketInstance.on("notification", ({ chatId, message }) => {
+      if (message.sender !== localStorage.getItem("userId")) {
+        setNotifications((prev) => [...prev, { chatId, message }]);
+        setTimeout(() => setNotifications((prev) => prev.slice(1)), 5000);
+      }
+    });
+
+    return () => {
+      socketInstance.off("message");
+      socketInstance.off("notification");
+      socketInstance.off("connect");
+      socketInstance.off("connect_error");
+      socketInstance.disconnect();
+    };
+  }, [router, statusFilter, showChatModal]);
+
+  const handleApply = async (jobId) => {
     if (!resumeFile || !coverLetter) {
       toast.error("Please upload a resume and write a cover letter.");
       return;
     }
 
     const token = localStorage.getItem("token");
-    if (!token) {
-      router.push("/");
-      return;
-    }
     const formData = new FormData();
     formData.append("resume", resumeFile);
 
@@ -88,14 +111,13 @@ export default function Jobs() {
 
       const applyRes = await fetch("http://localhost:5000/api/applications/apply", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ jobId, resumeText, coverLetter }),
       });
       if (!applyRes.ok) throw new Error(`Application submission failed: ${applyRes.status}`);
+      const newApplication = await applyRes.json();
       setAppliedJobs((prev) => [...prev, jobId]);
+      setApplications((prev) => [...prev, newApplication]);
       setShowApplyModal(null);
       setResumeFile(null);
       setCoverLetter("");
@@ -109,46 +131,26 @@ export default function Jobs() {
     }
   };
 
-  const handleAnalyze = async (jobId: string) => {
+  const handleAnalyze = async (jobId) => {
     if (!resumeFile) {
       toast.error("Please upload a resume to analyze.");
       return;
     }
 
-    // Check file size (e.g., limit to 5MB)
-    if (resumeFile.size > 5 * 1024 * 1024) {
-      toast.error("Resume file is too large. Please upload a file under 5MB.");
-      return;
-    }
-
     const token = localStorage.getItem("token");
-    if (!token) {
-      router.push("/");
-      return;
-    }
-
     try {
       const reader = new FileReader();
       reader.onloadend = async () => {
         const base64Resume = reader.result.split(",")[1];
         const analyzeRes = await fetch("http://localhost:5000/api/resume/analyze", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({ jobId, resume: base64Resume }),
         });
 
-        if (!analyzeRes.ok) {
-          const errorData = await analyzeRes.json();
-          throw new Error(`Analysis failed: ${analyzeRes.status} - ${errorData.msg || "Unknown error"}`);
-        }
+        if (!analyzeRes.ok) throw new Error(`Analysis failed: ${analyzeRes.status}`);
         const result = await analyzeRes.json();
         setAnalysisResult(result);
-      };
-      reader.onerror = () => {
-        throw new Error("Failed to read resume file.");
       };
       reader.readAsDataURL(resumeFile);
     } catch (err) {
@@ -160,15 +162,57 @@ export default function Jobs() {
     }
   };
 
+  const openChat = async (applicationId) => {
+    const token = localStorage.getItem("token");
+    try {
+      const res = await fetch(`http://localhost:5000/api/chat/${applicationId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to load chat");
+      const chat = await res.json();
+      setShowChatModal(chat);
+      setChatMessages(chat.messages);
+      socket.emit("joinChat", chat._id);
+
+      await fetch(`http://localhost:5000/api/chat/${chat._id}/read`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch (err) {
+      toast.error(`Error loading chat: ${err.message}`);
+    }
+  };
+
+  const sendMessage = async () => {
+    if (!newMessage && !attachment) return;
+    const token = localStorage.getItem("token");
+    const formData = new FormData();
+    if (newMessage) formData.append("content", newMessage);
+    if (attachment) formData.append("attachment", attachment);
+
+    try {
+      const res = await fetch(`http://localhost:5000/api/chat/${showChatModal._id}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      if (!res.ok) throw new Error("Failed to send message");
+      const message = await res.json();
+      socket.emit("sendMessage", { chatId: showChatModal._id, message });
+      setNewMessage("");
+      setAttachment(null);
+    } catch (err) {
+      toast.error(`Error sending message: ${err.message}`);
+    }
+  };
+
   const filteredJobs = jobs.filter((job) => {
     const textMatch =
       job.title.toLowerCase().includes(filter.toLowerCase()) ||
       job.details.toLowerCase().includes(filter.toLowerCase());
-
     const skillMatch = skillFilter
       ? job.skills.some((skill) => skill.toLowerCase().includes(skillFilter.toLowerCase()))
       : true;
-
     const salaryMatch = () => {
       if (!job.salary) return !minSalary && !maxSalary;
       const salaryNum = parseInt(job.salary.replace(/[^0-9]/g, ""), 10) || 0;
@@ -176,7 +220,6 @@ export default function Jobs() {
       const max = maxSalary ? parseInt(maxSalary, 10) : Infinity;
       return salaryNum >= min && salaryNum <= max;
     };
-
     return textMatch && skillMatch && salaryMatch();
   });
 
@@ -242,44 +285,44 @@ export default function Jobs() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {filteredJobs.length === 0 ? (
-            <p className="text-white text-center col-span-full">No jobs match your filters.</p>
-          ) : (
-            filteredJobs.map((job) => (
-              <div
-                key={job._id}
-                className="job-card p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 bg-[#d9d9d9]"
-              >
-                <h3 className="font-semibold text-lg mb-2 text-[#313131]">{job.title}</h3>
-                <p className="text-sm text-[#313131]">{job.details}</p>
-                <p className="text-xs text-gray-600 mt-1">Skills: {job.skills.join(", ")}</p>
-                <p className="text-xs text-gray-600 mt-1">Salary: {job.salary || "Not specified"}</p>
-                <p className="text-xs text-gray-600 mt-1">Status: {job.isClosed ? "Closed" : "Open"}</p>
-                <div className="mt-4 flex justify-end space-x-2">
+          {filteredJobs.map((job) => (
+            <div key={job._id} className="job-card p-6 rounded-lg shadow-md bg-[#d9d9d9]">
+              <h3 className="font-semibold text-lg mb-2 text-[#313131]">{job.title}</h3>
+              <p className="text-sm text-[#313131]">{job.details}</p>
+              <p className="text-xs text-gray-600 mt-1">Skills: {job.skills.join(", ")}</p>
+              <p className="text-xs text-gray-600 mt-1">Salary: {job.salary || "Not specified"}</p>
+              <p className="text-xs text-gray-600 mt-1">Status: {job.isClosed ? "Closed" : "Open"}</p>
+              <div className="mt-4 flex justify-end space-x-2">
+                <button
+                  onClick={() => setShowAnalyzeModal(job)}
+                  className="text-sm px-4 py-2 rounded-lg bg-[#4a4a4a] text-white hover:bg-[#313131]"
+                >
+                  Analyze Resume
+                </button>
+                {appliedJobs.includes(job._id) && (
                   <button
-                    onClick={() => setShowAnalyzeModal(job)}
-                    className="text-sm px-4 py-2 rounded-lg bg-[#4a4a4a] text-white hover:bg-[#313131] transition duration-200"
+                    onClick={() => openChat(applications.find((app) => app.job._id === job._id)._id)}
+                    className="text-sm px-4 py-2 rounded-lg bg-[#4a4a4a] text-white hover:bg-[#313131]"
                   >
-                    Analyze Resume
+                    Chat
                   </button>
-                  <button
-                    onClick={() => (appliedJobs.includes(job._id) ? null : setShowApplyModal(job))}
-                    disabled={appliedJobs.includes(job._id) || job.isClosed}
-                    className={`text-sm px-4 py-2 rounded-lg transition duration-200 ${
-                      appliedJobs.includes(job._id) || job.isClosed
-                        ? "bg-gray-400 text-white cursor-not-allowed"
-                        : "bg-[#313131] text-white hover:bg-[#4a4a4a]"
-                    }`}
-                  >
-                    {appliedJobs.includes(job._id) ? "Applied" : job.isClosed ? "Closed" : "Apply"}
-                  </button>
-                </div>
+                )}
+                <button
+                  onClick={() => (appliedJobs.includes(job._id) ? null : setShowApplyModal(job))}
+                  disabled={appliedJobs.includes(job._id) || job.isClosed}
+                  className={`text-sm px-4 py-2 rounded-lg ${
+                    appliedJobs.includes(job._id) || job.isClosed
+                      ? "bg-gray-400 text-white cursor-not-allowed"
+                      : "bg-[#313131] text-white hover:bg-[#4a4a4a]"
+                  }`}
+                >
+                  {appliedJobs.includes(job._id) ? "Applied" : job.isClosed ? "Closed" : "Apply"}
+                </button>
               </div>
-            ))
-          )}
+            </div>
+          ))}
         </div>
 
-        {/* Apply Modal */}
         {showApplyModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-[#d9d9d9] p-6 rounded-lg shadow-lg w-full max-w-md">
@@ -307,13 +350,13 @@ export default function Jobs() {
                 <div className="flex justify-end space-x-2">
                   <button
                     onClick={() => setShowApplyModal(null)}
-                    className="bg-gray-400 text-white px-4 py-2 rounded hover:bg-gray-500 transition"
+                    className="bg-gray-400 text-white px-4 py-2 rounded hover:bg-gray-500"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={() => handleApply(showApplyModal._id)}
-                    className="bg-[#313131] text-white px-4 py-2 rounded hover:bg-[#4a4a4a] transition"
+                    className="bg-[#313131] text-white px-4 py-2 rounded hover:bg-[#4a4a4a]"
                   >
                     Submit
                   </button>
@@ -323,7 +366,6 @@ export default function Jobs() {
           </div>
         )}
 
-        {/* Analyze Resume Modal */}
         {showAnalyzeModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-[#d9d9d9] p-6 rounded-lg shadow-lg w-full max-w-md">
@@ -342,19 +384,10 @@ export default function Jobs() {
                 </div>
                 {analysisResult && (
                   <div className="text-[#313131]">
-                    <p>
-                      <strong>Match Score:</strong> {analysisResult.matchScore}%
-                    </p>
-                    <p>
-                      <strong>Missing Keywords:</strong>{" "}
-                      {analysisResult.missingKeywords.join(", ") || "None"}
-                    </p>
-                    <p>
-                      <strong>Missing Skills:</strong> {analysisResult.missingSkills.join(", ") || "None"}
-                    </p>
-                    <p>
-                      <strong>Feedback:</strong>
-                    </p>
+                    <p><strong>Match Score:</strong> {analysisResult.matchScore}%</p>
+                    <p><strong>Missing Keywords:</strong> {analysisResult.missingKeywords.join(", ") || "None"}</p>
+                    <p><strong>Missing Skills:</strong> {analysisResult.missingSkills.join(", ") || "None"}</p>
+                    <p><strong>Feedback:</strong></p>
                     <ul className="list-disc pl-5">
                       {analysisResult.feedback.map((item, index) => (
                         <li key={index}>{item}</li>
@@ -369,13 +402,13 @@ export default function Jobs() {
                       setAnalysisResult(null);
                       setResumeFile(null);
                     }}
-                    className="bg-gray-400 text-white px-4 py-2 rounded hover:bg-gray-500 transition"
+                    className="bg-gray-400 text-white px-4 py-2 rounded hover:bg-gray-500"
                   >
                     Close
                   </button>
                   <button
                     onClick={() => handleAnalyze(showAnalyzeModal._id)}
-                    className="bg-[#313131] text-white px-4 py-2 rounded hover:bg-[#4a4a4a] transition"
+                    className="bg-[#313131] text-white px-4 py-2 rounded hover:bg-[#4a4a4a]"
                   >
                     Analyze
                   </button>
@@ -384,6 +417,65 @@ export default function Jobs() {
             </div>
           </div>
         )}
+
+        {showChatModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-[#d9d9d9] p-6 rounded-lg shadow-lg w-full max-w-lg">
+              <h2 className="text-xl font-bold text-[#313131] mb-4">Chat</h2>
+              <div className="h-64 overflow-y-auto mb-4 bg-white p-2 rounded">
+                {chatMessages.map((msg, index) => (
+                  <div
+                    key={index}
+                    className={`mb-2 ${msg.sender === localStorage.getItem("userId") ? "text-right" : "text-left"}`}
+                  >
+                    <p className="text-[#313131]">{msg.content}</p>
+                    {msg.attachment && (
+                      <a href={`http://localhost:5000${msg.attachment}`} target="_blank" className="text-blue-500">
+                        {msg.attachmentType === "link" ? msg.content : `Attachment (${msg.attachmentType})`}
+                      </a>
+                    )}
+                    <span className="text-xs text-gray-500">{new Date(msg.timestamp).toLocaleTimeString()}</span>
+                  </div>
+                ))}
+              </div>
+              <textarea
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                className="w-full p-2 rounded-lg border border-[#313131] text-[#313131]"
+                placeholder="Type a message..."
+              />
+              <input
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
+                onChange={(e) => setAttachment(e.target.files ? e.target.files[0] : null)}
+                className="mt-2"
+              />
+              <div className="flex justify-end space-x-2 mt-2">
+                <button
+                  onClick={() => setShowChatModal(null)}
+                  className="bg-gray-400 text-white px-4 py-2 rounded hover:bg-gray-500"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={sendMessage}
+                  className="bg-[#313131] text-white px-4 py-2 rounded hover:bg-[#4a4a4a]"
+                >
+                  Send
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {notifications.map((notif, index) => (
+          <div
+            key={index}
+            className="fixed top-4 right-4 bg-[#313131] text-white p-4 rounded-lg shadow-lg z-50"
+          >
+            New message in chat {notif.chatId}
+          </div>
+        ))}
       </main>
     </div>
   );
